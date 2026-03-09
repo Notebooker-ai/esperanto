@@ -1,5 +1,7 @@
 """Base embedding model interface."""
 
+import functools
+import os
 import re
 import warnings
 from abc import ABC, abstractmethod
@@ -11,6 +13,46 @@ from httpx import Client, AsyncClient
 from esperanto.common_types import Model
 from esperanto.common_types.task_type import EmbeddingTaskType
 from esperanto.utils.connect import HttpConnectionMixin
+
+
+def _make_embed_wrapper(original):
+    """Create a sync embed wrapper that adds adaptive retry."""
+
+    @functools.wraps(original)
+    def wrapper(self, texts, **kwargs):
+        try:
+            return original(self, texts, **kwargs)
+        except Exception as e:
+            if self.auto_retry_on_context_limit:
+                from esperanto.utils.token_utils import is_context_limit_error
+
+                if is_context_limit_error(e):
+                    return self._embed_with_adaptive_batching(
+                        texts, e, depth=0, **kwargs
+                    )
+            raise
+
+    return wrapper
+
+
+def _make_aembed_wrapper(original):
+    """Create an async aembed wrapper that adds adaptive retry."""
+
+    @functools.wraps(original)
+    async def wrapper(self, texts, **kwargs):
+        try:
+            return await original(self, texts, **kwargs)
+        except Exception as e:
+            if self.auto_retry_on_context_limit:
+                from esperanto.utils.token_utils import is_context_limit_error
+
+                if is_context_limit_error(e):
+                    return await self._aembed_with_adaptive_batching(
+                        texts, e, depth=0, **kwargs
+                    )
+            raise
+
+    return wrapper
 
 
 @dataclass
@@ -25,6 +67,22 @@ class EmbeddingModel(HttpConnectionMixin, ABC):
     _config: Dict[str, Any] = field(default_factory=dict)
     client: Optional[Client] = None
     async_client: Optional[AsyncClient] = None
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Wrap concrete embed/aembed methods with adaptive retry logic.
+        # Abstract methods are skipped — only concrete provider implementations
+        # get wrapped. The wrapper is transparent when retry is disabled.
+        if "embed" in cls.__dict__:
+            method = cls.__dict__["embed"]
+            if not getattr(method, "__isabstractmethod__", False):
+                cls._unwrapped_embed = method
+                cls.embed = _make_embed_wrapper(method)
+        if "aembed" in cls.__dict__:
+            method = cls.__dict__["aembed"]
+            if not getattr(method, "__isabstractmethod__", False):
+                cls._unwrapped_aembed = method
+                cls.aembed = _make_aembed_wrapper(method)
 
     def __post_init__(self):
         """Initialize configuration after dataclass initialization."""
@@ -47,6 +105,16 @@ class EmbeddingModel(HttpConnectionMixin, ABC):
         self.late_chunking = self._config.get("late_chunking", False)
         self.output_dimensions = self._config.get("output_dimensions")
         self.truncate_at_max_length = self._config.get("truncate_at_max_length", True)
+
+        # Extract adaptive retry settings
+        env_val = os.getenv("ESPERANTO_EMBEDDING_AUTO_RETRY", "").lower()
+        if "auto_retry_on_context_limit" in self._config:
+            self.auto_retry_on_context_limit = self._config["auto_retry_on_context_limit"]
+        elif env_val:
+            self.auto_retry_on_context_limit = env_val in ("true", "1", "yes")
+        else:
+            self.auto_retry_on_context_limit = True
+        self.max_retry_depth = self._config.get("max_retry_depth", 3)
 
         # Convert string task_type to enum if needed
         if self.task_type and isinstance(self.task_type, str):
@@ -86,6 +154,255 @@ class EmbeddingModel(HttpConnectionMixin, ABC):
             List of embeddings, one for each input text.
         """
         pass
+
+    def _embed_with_adaptive_batching(
+        self,
+        texts: List[str],
+        error: Exception,
+        depth: int = 0,
+        **kwargs,
+    ) -> List[List[float]]:
+        """Retry embedding with adaptive batching after a context limit error.
+
+        Splits texts into smaller batches based on error info and retries.
+        For single oversized texts, chunks the text and averages embeddings.
+
+        Args:
+            texts: List of texts that failed to embed.
+            error: The context limit exception.
+            depth: Current recursion depth for retry limiting.
+            **kwargs: Additional arguments to pass to the embedding API.
+
+        Returns:
+            List of embeddings, one for each input text.
+
+        Raises:
+            RuntimeError: If max retry depth is exceeded.
+        """
+        if depth >= self.max_retry_depth:
+            raise RuntimeError(
+                f"Adaptive embedding retry exceeded max depth ({self.max_retry_depth}). "
+                f"Last error: {error}"
+            )
+
+        from esperanto.utils.token_utils import (
+            batch_by_token_limit,
+            calculate_batch_token_limit,
+            chunk_text_by_tokens,
+            get_context_limit_from_error,
+            token_count,
+        )
+
+        tokens_sent, context_limit = get_context_limit_from_error(error)
+        batch_limit = calculate_batch_token_limit(
+            tokens_sent or 0, context_limit, len(texts)
+        )
+
+        # Single text that's too large: chunk it
+        if len(texts) == 1:
+            return self._embed_single_text_chunked(
+                texts[0], batch_limit, depth, **kwargs
+            )
+
+        # Multiple texts: rebatch by token limit
+        batches = batch_by_token_limit(texts, batch_limit)
+        all_embeddings: List[List[float]] = []
+
+        for batch in batches:
+            try:
+                batch_embeddings = type(self)._unwrapped_embed(self, batch, **kwargs)
+                all_embeddings.extend(batch_embeddings)
+            except Exception as e:
+                from esperanto.utils.token_utils import is_context_limit_error
+
+                if is_context_limit_error(e):
+                    retry_result = self._embed_with_adaptive_batching(
+                        batch, e, depth + 1, **kwargs
+                    )
+                    all_embeddings.extend(retry_result)
+                else:
+                    raise
+
+        return all_embeddings
+
+    async def _aembed_with_adaptive_batching(
+        self,
+        texts: List[str],
+        error: Exception,
+        depth: int = 0,
+        **kwargs,
+    ) -> List[List[float]]:
+        """Async retry embedding with adaptive batching after context limit error.
+
+        Args:
+            texts: List of texts that failed to embed.
+            error: The context limit exception.
+            depth: Current recursion depth for retry limiting.
+            **kwargs: Additional arguments to pass to the embedding API.
+
+        Returns:
+            List of embeddings, one for each input text.
+
+        Raises:
+            RuntimeError: If max retry depth is exceeded.
+        """
+        if depth >= self.max_retry_depth:
+            raise RuntimeError(
+                f"Adaptive embedding retry exceeded max depth ({self.max_retry_depth}). "
+                f"Last error: {error}"
+            )
+
+        from esperanto.utils.token_utils import (
+            batch_by_token_limit,
+            calculate_batch_token_limit,
+            chunk_text_by_tokens,
+            get_context_limit_from_error,
+            token_count,
+        )
+
+        tokens_sent, context_limit = get_context_limit_from_error(error)
+        batch_limit = calculate_batch_token_limit(
+            tokens_sent or 0, context_limit, len(texts)
+        )
+
+        # Single text that's too large: chunk it
+        if len(texts) == 1:
+            return await self._aembed_single_text_chunked(
+                texts[0], batch_limit, depth, **kwargs
+            )
+
+        # Multiple texts: rebatch by token limit
+        batches = batch_by_token_limit(texts, batch_limit)
+        all_embeddings: List[List[float]] = []
+
+        for batch in batches:
+            try:
+                batch_embeddings = await type(self)._unwrapped_aembed(self, batch, **kwargs)
+                all_embeddings.extend(batch_embeddings)
+            except Exception as e:
+                from esperanto.utils.token_utils import is_context_limit_error
+
+                if is_context_limit_error(e):
+                    retry_result = await self._aembed_with_adaptive_batching(
+                        batch, e, depth + 1, **kwargs
+                    )
+                    all_embeddings.extend(retry_result)
+                else:
+                    raise
+
+        return all_embeddings
+
+    def _embed_single_text_chunked(
+        self,
+        text: str,
+        token_limit: int,
+        depth: int = 0,
+        **kwargs,
+    ) -> List[List[float]]:
+        """Chunk a single oversized text, embed chunks, and average.
+
+        Args:
+            text: The oversized text to embed.
+            token_limit: Token limit per chunk.
+            depth: Current recursion depth.
+            **kwargs: Additional arguments to pass to the embedding API.
+
+        Returns:
+            List containing one averaged embedding.
+        """
+        from esperanto.utils.token_utils import chunk_text_by_tokens
+
+        chunks = chunk_text_by_tokens(text, token_limit)
+        if not chunks:
+            return [[]]
+
+        all_chunk_embeddings: List[List[float]] = []
+        for chunk in chunks:
+            try:
+                result = type(self)._unwrapped_embed(self, [chunk], **kwargs)
+                all_chunk_embeddings.extend(result)
+            except Exception as e:
+                from esperanto.utils.token_utils import is_context_limit_error
+
+                if is_context_limit_error(e):
+                    retry_result = self._embed_with_adaptive_batching(
+                        [chunk], e, depth + 1, **kwargs
+                    )
+                    all_chunk_embeddings.extend(retry_result)
+                else:
+                    raise
+
+        # Average the chunk embeddings
+        if len(all_chunk_embeddings) == 1:
+            return all_chunk_embeddings
+
+        return [self._average_embeddings(all_chunk_embeddings)]
+
+    async def _aembed_single_text_chunked(
+        self,
+        text: str,
+        token_limit: int,
+        depth: int = 0,
+        **kwargs,
+    ) -> List[List[float]]:
+        """Async chunk a single oversized text, embed chunks, and average.
+
+        Args:
+            text: The oversized text to embed.
+            token_limit: Token limit per chunk.
+            depth: Current recursion depth.
+            **kwargs: Additional arguments to pass to the embedding API.
+
+        Returns:
+            List containing one averaged embedding.
+        """
+        from esperanto.utils.token_utils import chunk_text_by_tokens
+
+        chunks = chunk_text_by_tokens(text, token_limit)
+        if not chunks:
+            return [[]]
+
+        all_chunk_embeddings: List[List[float]] = []
+        for chunk in chunks:
+            try:
+                result = await type(self)._unwrapped_aembed(self, [chunk], **kwargs)
+                all_chunk_embeddings.extend(result)
+            except Exception as e:
+                from esperanto.utils.token_utils import is_context_limit_error
+
+                if is_context_limit_error(e):
+                    retry_result = await self._aembed_with_adaptive_batching(
+                        [chunk], e, depth + 1, **kwargs
+                    )
+                    all_chunk_embeddings.extend(retry_result)
+                else:
+                    raise
+
+        # Average the chunk embeddings
+        if len(all_chunk_embeddings) == 1:
+            return all_chunk_embeddings
+
+        return [self._average_embeddings(all_chunk_embeddings)]
+
+    @staticmethod
+    def _average_embeddings(embeddings: List[List[float]]) -> List[float]:
+        """Average multiple embeddings into one.
+
+        Args:
+            embeddings: List of embedding vectors.
+
+        Returns:
+            Averaged embedding vector.
+        """
+        if not embeddings:
+            return []
+        dim = len(embeddings[0])
+        avg = [0.0] * dim
+        for emb in embeddings:
+            for i in range(dim):
+                avg[i] += emb[i]
+        n = len(embeddings)
+        return [v / n for v in avg]
 
     def get_model_name(self) -> str:
         """Get the model name.
@@ -248,7 +565,11 @@ class EmbeddingModel(HttpConnectionMixin, ABC):
             Filtered dictionary with only supported parameters.
         """
         # Define known advanced features
-        advanced_features = ["task_type", "late_chunking", "output_dimensions", "truncate_at_max_length"]
+        advanced_features = [
+            "task_type", "late_chunking", "output_dimensions",
+            "truncate_at_max_length", "auto_retry_on_context_limit",
+            "max_retry_depth",
+        ]
 
         # If provider doesn't explicitly support advanced features, remove them
         supported_features = getattr(self.__class__, 'SUPPORTED_FEATURES', [])

@@ -1,5 +1,6 @@
 """Utility modules for Esperanto."""
 
+from esperanto.utils.embedding import validate_and_decode_embedding
 from esperanto.utils.model_cache import ModelCache
 from esperanto.utils.token_utils import (
     DEFAULT_CONTEXT_LIMIT,
@@ -18,6 +19,7 @@ from esperanto.utils.token_utils import (
 
 __all__ = [
     "ModelCache",
+    "validate_and_decode_embedding",
     "DEFAULT_CONTEXT_LIMIT",
     "DEFAULT_OUTPUT_TOKENS",
     "OUTPUT_RATIO",

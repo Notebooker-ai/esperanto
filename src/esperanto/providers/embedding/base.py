@@ -8,8 +8,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from httpx import Client, AsyncClient
-
 from esperanto.common_types import Model
 from esperanto.common_types.task_type import EmbeddingTaskType
 from esperanto.utils.connect import HttpConnectionMixin
@@ -65,8 +63,6 @@ class EmbeddingModel(HttpConnectionMixin, ABC):
     organization: Optional[str] = None
     config: Optional[Dict[str, Any]] = None
     _config: Dict[str, Any] = field(default_factory=dict)
-    client: Optional[Client] = None
-    async_client: Optional[AsyncClient] = None
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

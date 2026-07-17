@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Multi-modality OpenAI-compatible profiles** — a registered
+  `OpenAICompatibleProfile` can now serve `embedding`, `speech_to_text`, and
+  `text_to_speech` in addition to `language`, via a new opt-in `capabilities`
+  field (default: `{"language"}`) and per-modality `default_models`. The four
+  factories (`create_language`/`create_embedding`/`create_speech_to_text`/
+  `create_text_to_speech`) resolve profiles through one shared precedence chain
+  (`ProfileAwareMixin`). Requesting a modality a profile doesn't declare raises
+  the new typed `ProviderCapabilityError` (unless a first-class class of the same
+  name covers it — e.g. xAI is a `language` profile and a first-class TTS class,
+  which keeps working). A profile that declares a modality but sets no default
+  model raises a clear error rather than falling back to a placeholder the
+  endpoint has never heard of. New base exception `EsperantoError`
+  (`ProviderCapabilityError` extends it), seeding the normalized exception
+  hierarchy. (#230)
+- **Schema-driven structured outputs across all LLM providers** — set
+  `config={"structured": {"type": "json_schema", "schema": MyPydanticModel}}`
+  (or a JSON Schema dict) and read the parsed, validated result from
+  `response.structured`. Works consistently across OpenAI, Azure, OpenAI-compatible
+  (incl. profile providers like DeepSeek/xAI/DashScope/MiniMax), Google (Gemini),
+  Vertex AI, Anthropic (`output_config.format`), Groq, Mistral, Ollama, OpenRouter,
+  Perplexity, and Cohere. The parsed object is the source of truth on each choice's
+  message (`choices[i].message.structured`), surfaced at the top level via
+  `response.structured` (mirrors `content`), so multi-choice (`n>1`) responses each
+  carry their own parsed value. Schema mode is non-streaming in v1
+  (`stream=True` raises `ValueError`); providers/models that can't honor a
+  `json_schema` request fail fast with a clear error rather than silently degrading.
+  (#95)
+
+### Deprecated
+
+- **`OpenAICompatibleProfile(default_model=...)`** — use
+  `default_models={"language": ...}` instead. The old field still works as a
+  back-compat alias for the language default and now emits a `DeprecationWarning`.
+  (#230)
+
+## [2.24.0] - 2026-06-23
+
+### Added
+
+- **Deepgram speech-to-text provider** — Deepgram is now selectable for STT via
+  `AIFactory.create_speech_to_text("deepgram", "nova-3")`, complementing the
+  existing Deepgram TTS provider. Posts to `/v1/listen` with `utterances=true`,
+  authenticates with the shared `DEEPGRAM_API_KEY`, and normalizes the response
+  to a `TranscriptionResponse`: `text` always, plus `segments` (built from
+  `results.utterances`, with Deepgram-specific extras — confidence, channel, id,
+  speaker — under each segment's `metadata`). When Deepgram returns no utterance
+  timing, `segments` stays `None` rather than being fabricated. Ships with
+  mocked-API unit tests. (#202)
+
+### Fixed
+
+- **OpenAI STT `gpt-4o-transcribe` compatibility** — the OpenAI STT provider no
+  longer hardcodes `response_format="verbose_json"`, which only `whisper-1`
+  accepts. It now sends `verbose_json` for the Whisper family (preserving
+  segments and duration) and `json` for the `gpt-4o-transcribe` /
+  `gpt-4o-mini-transcribe` family, which previously failed with a compatibility
+  error. When those models omit segments/duration, the corresponding
+  `TranscriptionResponse` fields stay `None`. (#204)
+- **`mypy --strict` re-exports** — the package-level `__all__` is now a static
+  literal instead of a runtime-built list, so downstream packages compiling with
+  `mypy --strict` (which implies `no_implicit_reexport`) can
+  `from esperanto import AIFactory` without "does not explicitly export
+  attribute" errors. Runtime import behavior, including graceful degradation for
+  missing optional dependencies, is unchanged. (#190)
+
 ## [2.23.0] - 2026-06-16
 
 ### Added

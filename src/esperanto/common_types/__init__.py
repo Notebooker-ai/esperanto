@@ -1,6 +1,11 @@
 """Types module for Esperanto."""
 
-from .exceptions import ToolCallValidationError
+from .exceptions import (
+    EsperantoError,
+    ProviderCapabilityError,
+    StructuredOutputValidationError,
+    ToolCallValidationError,
+)
 from .model import Model
 from .reranker import RerankResponse, RerankResult
 from .response import (
@@ -35,8 +40,12 @@ __all__ = [
     "ToolFunction",
     "ToolCall",
     "FunctionCall",
+    # Errors
+    "EsperantoError",
+    "ProviderCapabilityError",
     # Validation
     "ToolCallValidationError",
+    "StructuredOutputValidationError",
     "validate_tool_call",
     "validate_tool_calls",
     "find_tool_by_name",

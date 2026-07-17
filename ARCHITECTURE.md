@@ -88,6 +88,26 @@ When a provider's native endpoint genuinely doesn't return the data required to 
 
 **Origin:** Issue #185, 2026-05-12.
 
+### Opt-In Capability Declaration
+
+Declarative provider config (profiles) must explicitly declare which modalities it supports, and the default is the narrowest useful set — never "everything the mechanism could technically reach." Where a declared capability collides with an existing first-class class for the same name+modality, the explicit declaration wins, but registration emits a warning so the shadowing is visible.
+
+**Why:** A declarative mechanism that auto-applies to every modality starts lying: extending profiles to embeddings would have made DeepSeek and xAI advertise themselves as embedding providers overnight, breaking the honesty of the provider matrix and error messages. Opt-in also makes hybrid providers work by construction — xAI is a profile for `language` and a first-class class for `text_to_speech`, and declaring only `{"language"}` keeps the TTS class intact with no precedence special-case. The registration warning keeps the legitimate override (pointing a profile at a proxy) available without letting ambiguity happen silently.
+
+**Scope:** Profiles and any future declarative config that spans modalities or components. Pairs with **Demand-Driven Abstraction Extension** — declare a capability when a real endpoint needs it, not because the mechanism allows it.
+
+**Origin:** Issue #230, 2026-07-17.
+
+### No Default Beats a Wrong Default
+
+When a provider genuinely has no meaningful default (a bring-your-own-models local server like oMLX or Ollama, where the served models are whatever the user loaded), do not fall back to a generic placeholder — raise a clear error naming the provider and asking for an explicit model.
+
+**Why:** This is the boundary of **Hot-Swap-First Defaults**, not a contradiction of it. That principle says to pick a default that *makes typical workloads succeed*. A default like `whisper-1` or `text-embedding-3-small` on a server that never heard of those models doesn't make anything succeed — it converts a clear configuration error into an opaque 404 from someone else's endpoint. The honest default is no default.
+
+**Scope:** Provider/profile default model resolution (`_get_default_model()`), and any default that can only be correct for some endpoints behind the same interface. Refines **Hot-Swap-First Defaults**: prefer a working default; where none can work, prefer an error over a plausible-looking wrong one.
+
+**Origin:** Issue #230, 2026-07-17.
+
 ## Provider Tiers
 
 Not all providers require the same level of implementation effort. We classify them into tiers:
@@ -168,6 +188,17 @@ Before implementing a new provider, ask yourself:
 4. **Can it support the full interface?** A provider that can only do `chat_complete` but not streaming, tools, or structured output may not be ready for first-class support.
 
 When in doubt, open an issue. We'd rather discuss the design upfront than review a PR that doesn't align with these principles.
+
+### Provider Notability Bar
+
+Esperanto attracts provider-addition PRs, some primarily for the contributor's own visibility. We accept providers that are **real, operating services with a public API and demonstrable adoption** — not vanity listings, pre-launch products, or endpoints without a genuine user base. The bar scales with maintenance cost:
+
+- **Profile-based (OpenAI-compatible) providers** — a low bar. Cost is a few lines of config in `profiles.py` and no dedicated code path, so a working public OpenAI-compatible endpoint from a real company/service is enough. (This is how DeepSeek, xAI, DashScope, MiniMax, and Novita were added.)
+- **First-class provider classes** — a higher bar. These carry ongoing maintenance (custom request/response handling, provider-specific bugs, test surface), so they need meaningful adoption or a genuinely distinct API that many users need — not just novelty.
+
+When a provider's legitimacy isn't obvious, open an issue and link evidence (official docs, funding/company info, community usage) before implementing. This keeps the decision consistent and the provider list trustworthy rather than a directory of every endpoint that wanted a backlink.
+
+**Origin:** Recurring vanity-PR pattern surfaced during PR review, 2026-07-14.
 
 ## Architecture Overview
 

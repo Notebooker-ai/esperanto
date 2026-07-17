@@ -10,7 +10,7 @@ Welcome to the Esperanto provider guide. This page helps you choose the right AI
 | [OpenAI-Compatible](./openai-compatible.md) | ✅ | ✅ | ❌ | ✅ | ✅ | ⚠️* |
 | [Anthropic](./anthropic.md) | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | [Google (GenAI)](./google.md) | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ |
-| [Vertex AI](./vertex.md) | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| [Vertex AI](./vertex.md) | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ |
 | [Azure OpenAI](./azure.md) | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
 | [Groq](./groq.md) | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ |
 | [Ollama](./ollama.md) | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -20,6 +20,7 @@ Welcome to the Esperanto provider guide. This page helps you choose the right AI
 | [xAI](./xai.md) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | [DashScope (Qwen)](./dashscope.md) | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | [MiniMax](./minimax.md) | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| [Novita](./openai-compatible.md)* | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | [OpenRouter](./openrouter.md) | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | [Transformers](./transformers.md) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | [Jina](./jina.md) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
@@ -28,6 +29,8 @@ Welcome to the Esperanto provider guide. This page helps you choose the right AI
 | [ElevenLabs](./elevenlabs.md) | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 
 *⚠️ OpenAI-Compatible: JSON mode support depends on the specific endpoint implementation
+
+*Novita is available as a built-in OpenAI-compatible LLM profile. Use `AIFactory.create_language("novita", "moonshotai/kimi-k2.5")` with `NOVITA_API_KEY`. See [OpenAI-Compatible](./openai-compatible.md) for the shared setup path.
 
 ## Quick Selection Guide
 
@@ -106,6 +109,7 @@ Welcome to the Esperanto provider guide. This page helps you choose the right AI
 
 **Multiple Models Access:**
 - **[OpenRouter](./openrouter.md)**: 100+ models from various providers
+- **[Novita](./openai-compatible.md)**: 200+ open-source models (OpenAI-compatible profile)
 
 **Local Deployment:**
 - **[Ollama](./ollama.md)**: Llama, Mistral, Qwen, etc.
@@ -205,6 +209,7 @@ Welcome to the Esperanto provider guide. This page helps you choose the right AI
 | [xAI](./xai.md) | ✅ | ❌ | ✅ | 128K |
 | [DashScope](./dashscope.md) | ✅ | ✅ | ✅ | 1M (qwen-max-longcontext) |
 | [MiniMax](./minimax.md) | ✅ | ✅ | ✅ | 204K |
+| [Novita](./openai-compatible.md) | ✅ | ✅ | ✅ | Model-dependent |
 | [OpenRouter](./openrouter.md) | ✅ | ✅ | ✅ | Varies |
 | [Ollama](./ollama.md) | ✅ | ❌ | ✅ | Model-dependent |
 | [OpenAI-Compatible](./openai-compatible.md) | ✅ | ⚠️ | ⚠️ | Endpoint-dependent |
@@ -316,6 +321,7 @@ Require API keys, pay-per-use:
 - [Perplexity](./perplexity.md)
 - [xAI](./xai.md)
 - [OpenRouter](./openrouter.md)
+- [Novita](./openai-compatible.md) (OpenAI-compatible profile)
 - [Jina](./jina.md)
 - [Voyage](./voyage.md)
 - [Cohere](./cohere.md)

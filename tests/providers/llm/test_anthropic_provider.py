@@ -309,7 +309,9 @@ async def test_json_schema_structured_output_streaming_not_supported_async(
 def test_to_langchain_json_schema_structured_output(anthropic_model):
     anthropic_model.structured = {"type": "json_schema", "schema": TripPlan}
     langchain_model = anthropic_model.to_langchain()
-    output_config = (
+    # Newer langchain-anthropic promotes output_config from model_kwargs to an
+    # explicit field; accept it from either location.
+    output_config = getattr(langchain_model, "output_config", None) or (
         langchain_model.model_kwargs.get("output_config", {})
         if hasattr(langchain_model, "model_kwargs")
         else {}

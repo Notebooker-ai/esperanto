@@ -4,7 +4,9 @@ This module exports all public components of the library.
 """
 
 from esperanto.common_types import (
+    EsperantoError,
     FunctionCall,
+    ProviderCapabilityError,
     Tool,
     ToolCall,
     ToolCallValidationError,
@@ -132,6 +134,16 @@ except ImportError:
     DeepgramSpeechToTextModel = None  # type: ignore[assignment,misc]
 
 try:
+    from esperanto.providers.tts.openrouter import OpenRouterTextToSpeechModel
+except ImportError:
+    OpenRouterTextToSpeechModel = None  # type: ignore[assignment,misc]
+
+try:
+    from esperanto.providers.stt.openrouter import OpenRouterSpeechToTextModel
+except ImportError:
+    OpenRouterSpeechToTextModel = None  # type: ignore[assignment,misc]
+
+try:
     from esperanto.providers.llm.cohere import CohereLanguageModel
 except ImportError:
     CohereLanguageModel = None  # type: ignore[assignment,misc]
@@ -166,6 +178,9 @@ __all__ = [
     "validate_tool_call",
     "validate_tool_calls",
     "find_tool_by_name",
+    # Errors
+    "EsperantoError",
+    "ProviderCapabilityError",
     # Profiles
     "OpenAICompatibleProfile",
     # Provider classes
@@ -191,6 +206,8 @@ __all__ = [
     "MistralSpeechToTextModel",
     "DeepgramTextToSpeechModel",
     "DeepgramSpeechToTextModel",
+    "OpenRouterTextToSpeechModel",
+    "OpenRouterSpeechToTextModel",
     "CohereLanguageModel",
     "CohereEmbeddingModel",
     "CohereRerankerModel",

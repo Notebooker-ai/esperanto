@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **oMLX built-in profile + `requires_api_key` flag** — [oMLX](https://github.com/madroidmaq/omlx),
+  a local OpenAI-compatible MLX server for Apple Silicon, is now a built-in
+  profile (`omlx`, `capabilities={"language", "embedding"}`, base URL
+  `http://localhost:11435/v1`, override via `OMLX_API_BASE`). A new
+  `requires_api_key` flag on `OpenAICompatibleProfile` (default `True`) lets
+  local/no-auth endpoints tolerate a missing API key — it falls back to
+  `"not-required"` instead of raising. oMLX sets no default models (bring your
+  own), so pass a `model_name`. (#228)
+
 - **Multi-modality OpenAI-compatible profiles** — a registered
   `OpenAICompatibleProfile` can now serve `embedding`, `speech_to_text`, and
   `text_to_speech` in addition to `language`, via a new opt-in `capabilities`
@@ -36,6 +45,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`stream=True` raises `ValueError`); providers/models that can't honor a
   `json_schema` request fail fast with a clear error rather than silently degrading.
   (#95)
+- **PayPerQ (PPQ) provider — LLM, embedding, STT, TTS** — PayPerQ is now
+  selectable across all four modalities via `AIFactory.create_language`,
+  `create_embedding`, `create_speech_to_text`, and `create_text_to_speech` with
+  provider `"ppq"`. PPQ is a pay-as-you-go gateway exposing hundreds of models
+  from many labs through a single OpenAI-compatible endpoint. Added as a built-in
+  multi-modality `OpenAICompatibleProfile` (base URL `https://api.ppq.ai/v1`,
+  `PPQ_API_KEY`, optional `PPQ_BASE_URL`) with per-modality defaults (`auto`,
+  `openai/text-embedding-3-small`, `nova-3`, `deepgram_aura_2`), so it inherits
+  streaming, tool calling, and JSON mode from the OpenAI-compatible
+  implementation. Ships with profile unit tests and provider docs.
 
 ### Deprecated
 

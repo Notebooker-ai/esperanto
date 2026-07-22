@@ -788,6 +788,10 @@ Complete documentation is available in the [docs](https://github.com/lfnovo/espe
 
 We welcome contributions! Please see our [Contributing Guidelines](https://github.com/lfnovo/esperanto/blob/main/CONTRIBUTING.md) for details on how to get started.
 
+## Security 🔒
+
+Found a security vulnerability? Please report it privately — see our [Security Policy](https://github.com/lfnovo/esperanto/blob/main/SECURITY.md). Do not open a public issue for security reports.
+
 ## License 📄
 
 This project is licensed under the MIT License - see the [LICENSE](https://github.com/lfnovo/esperanto/blob/main/LICENSE) file for details.
@@ -800,11 +804,15 @@ git clone https://github.com/lfnovo/esperanto.git
 cd esperanto
 ```
 
-2. Install dependencies:
+2. Bootstrap the environment (creates a venv and installs all dependencies):
 ```bash
-pip install -r requirements.txt
+make setup
+source .venv/bin/activate
 ```
 
 3. Run tests:
 ```bash
-pytest
+make test
+```
+
+See [CONTRIBUTING.md](https://github.com/lfnovo/esperanto/blob/main/CONTRIBUTING.md) for the full development guide.

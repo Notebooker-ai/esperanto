@@ -477,21 +477,21 @@ class TestGroqChat:
     """Real integration tests for Groq chat completion."""
 
     def test_sync_chat_complete(self):
-        model = AIFactory.create_language("groq", "llama-3.3-70b-versatile")
+        model = AIFactory.create_language("groq", "openai/gpt-oss-120b")
         response = model.chat_complete(messages=MESSAGES)
         assert isinstance(response, ChatCompletion)
         assert response.choices[0].message.content is not None
         assert len(response.choices[0].message.content) > 0
 
     async def test_async_chat_complete(self):
-        model = AIFactory.create_language("groq", "llama-3.3-70b-versatile")
+        model = AIFactory.create_language("groq", "openai/gpt-oss-120b")
         response = await model.achat_complete(messages=MESSAGES)
         assert isinstance(response, ChatCompletion)
         assert response.choices[0].message.content is not None
         assert len(response.choices[0].message.content) > 0
 
     def test_sync_streaming(self):
-        model = AIFactory.create_language("groq", "llama-3.3-70b-versatile")
+        model = AIFactory.create_language("groq", "openai/gpt-oss-120b")
         response = model.chat_complete(messages=MESSAGES, stream=True)
         total_content = ""
         for chunk in response:
@@ -501,7 +501,7 @@ class TestGroqChat:
         assert len(total_content) > 0
 
     async def test_async_streaming(self):
-        model = AIFactory.create_language("groq", "llama-3.3-70b-versatile")
+        model = AIFactory.create_language("groq", "openai/gpt-oss-120b")
         response = await model.achat_complete(messages=MESSAGES, stream=True)
         total_content = ""
         async for chunk in response:
@@ -752,6 +752,59 @@ class TestDashScopeChat:
 
 
 # =============================================================================
+# SiliconFlow Tests
+# =============================================================================
+
+
+@pytest.mark.release
+@pytest.mark.skipif(
+    not os.getenv("SILICONFLOW_API_KEY"),
+    reason="SILICONFLOW_API_KEY not configured",
+)
+class TestSiliconFlowChat:
+    """Real integration tests for SiliconFlow chat and model discovery."""
+
+    MODEL = "deepseek-ai/DeepSeek-V3.1-Terminus"
+
+    def test_sync_chat_complete(self):
+        model = AIFactory.create_language("siliconflow", self.MODEL)
+        response = model.chat_complete(messages=MESSAGES)
+        assert isinstance(response, ChatCompletion)
+        assert response.choices[0].message.content
+
+    async def test_async_chat_complete(self):
+        model = AIFactory.create_language("siliconflow", self.MODEL)
+        response = await model.achat_complete(messages=MESSAGES)
+        assert isinstance(response, ChatCompletion)
+        assert response.choices[0].message.content
+
+    def test_sync_streaming(self):
+        model = AIFactory.create_language("siliconflow", self.MODEL)
+        response = model.chat_complete(messages=MESSAGES, stream=True)
+        total_content = ""
+        for chunk in response:
+            assert isinstance(chunk, ChatCompletionChunk)
+            if chunk.choices[0].delta.content:
+                total_content += chunk.choices[0].delta.content
+        assert total_content
+
+    async def test_async_streaming(self):
+        model = AIFactory.create_language("siliconflow", self.MODEL)
+        response = await model.achat_complete(messages=MESSAGES, stream=True)
+        total_content = ""
+        async for chunk in response:
+            assert isinstance(chunk, ChatCompletionChunk)
+            if chunk.choices[0].delta.content:
+                total_content += chunk.choices[0].delta.content
+        assert total_content
+
+    def test_model_discovery(self):
+        models = AIFactory.get_provider_models("siliconflow")
+        assert models
+        assert any(model.id == self.MODEL for model in models)
+
+
+# =============================================================================
 # MiniMax Tests
 # =============================================================================
 
@@ -765,21 +818,21 @@ class TestMiniMaxChat:
     """Real integration tests for MiniMax chat completion."""
 
     def test_sync_chat_complete(self):
-        model = AIFactory.create_language("minimax", "MiniMax-M2.5")
+        model = AIFactory.create_language("minimax", "MiniMax-M3")
         response = model.chat_complete(messages=MESSAGES)
         assert isinstance(response, ChatCompletion)
         assert response.choices[0].message.content is not None
         assert len(response.choices[0].message.content) > 0
 
     async def test_async_chat_complete(self):
-        model = AIFactory.create_language("minimax", "MiniMax-M2.5")
+        model = AIFactory.create_language("minimax", "MiniMax-M3")
         response = await model.achat_complete(messages=MESSAGES)
         assert isinstance(response, ChatCompletion)
         assert response.choices[0].message.content is not None
         assert len(response.choices[0].message.content) > 0
 
     def test_sync_streaming(self):
-        model = AIFactory.create_language("minimax", "MiniMax-M2.5")
+        model = AIFactory.create_language("minimax", "MiniMax-M3")
         response = model.chat_complete(messages=MESSAGES, stream=True)
         total_content = ""
         for chunk in response:
@@ -789,7 +842,55 @@ class TestMiniMaxChat:
         assert len(total_content) > 0
 
     async def test_async_streaming(self):
-        model = AIFactory.create_language("minimax", "MiniMax-M2.5")
+        model = AIFactory.create_language("minimax", "MiniMax-M3")
+        response = await model.achat_complete(messages=MESSAGES, stream=True)
+        total_content = ""
+        async for chunk in response:
+            assert isinstance(chunk, ChatCompletionChunk)
+            if chunk.choices[0].delta.content:
+                total_content += chunk.choices[0].delta.content
+        assert len(total_content) > 0
+
+
+# =============================================================================
+# Z.ai Tests
+# =============================================================================
+
+
+@pytest.mark.release
+@pytest.mark.skipif(
+    not os.getenv("ZAI_API_KEY"),
+    reason="ZAI_API_KEY not configured",
+)
+class TestZaiChat:
+    """Real integration tests for Z.ai chat completion."""
+
+    def test_sync_chat_complete(self):
+        model = AIFactory.create_language("zai", "glm-5.2")
+        response = model.chat_complete(messages=MESSAGES)
+        assert isinstance(response, ChatCompletion)
+        assert response.choices[0].message.content is not None
+        assert len(response.choices[0].message.content) > 0
+
+    async def test_async_chat_complete(self):
+        model = AIFactory.create_language("zai", "glm-5.2")
+        response = await model.achat_complete(messages=MESSAGES)
+        assert isinstance(response, ChatCompletion)
+        assert response.choices[0].message.content is not None
+        assert len(response.choices[0].message.content) > 0
+
+    def test_sync_streaming(self):
+        model = AIFactory.create_language("zai", "glm-5.2")
+        response = model.chat_complete(messages=MESSAGES, stream=True)
+        total_content = ""
+        for chunk in response:
+            assert isinstance(chunk, ChatCompletionChunk)
+            if chunk.choices[0].delta.content:
+                total_content += chunk.choices[0].delta.content
+        assert len(total_content) > 0
+
+    async def test_async_streaming(self):
+        model = AIFactory.create_language("zai", "glm-5.2")
         response = await model.achat_complete(messages=MESSAGES, stream=True)
         total_content = ""
         async for chunk in response:

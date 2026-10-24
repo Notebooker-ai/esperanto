@@ -41,7 +41,7 @@ The older approach used the `.models` property on provider instances:
 
 ```python
 # ❌ Deprecated - Will be removed in version 3.0
-model = AIFactory.create_language("openai", "gpt-4", api_key="your-api-key")
+model = AIFactory.create_language("openai", "gpt-4o-mini", config={"api_key": "your-api-key"})
 models = model.models
 ```
 
@@ -58,7 +58,7 @@ Query models without setting up providers:
 models = AIFactory.get_provider_models("openai", api_key="your-api-key")
 
 # vs the old way (deprecated)
-model_instance = AIFactory.create_language("openai", "gpt-4", api_key="your-api-key")
+model_instance = AIFactory.create_language("openai", "gpt-4o-mini", config={"api_key": "your-api-key"})
 models = model_instance.models  # Deprecated
 ```
 
@@ -195,9 +195,10 @@ for model in models:
     print(f"{model.id} - Context: {model.context_window} tokens")
 
 # Example output:
-# claude-sonnet-5 - Context: 200000 tokens
-# claude-haiku-4-5-20251001 - Context: 200000 tokens
-# claude-opus-5 - Context: 200000 tokens
+# claude-opus-5-5 - Context: 1000000 tokens
+# claude-sonnet-5-5 - Context: 1000000 tokens
+# claude-fable-5-1 - Context: 1000000 tokens
+# ...
 ```
 
 ### Google/Gemini
@@ -227,9 +228,10 @@ for model in models:
     print(f"{model.id}")
 
 # Example output:
-# mixtral-8x7b-32768
-# llama3-70b-8192
-# llama3-8b-8192
+# openai/gpt-oss-120b
+# openai/gpt-oss-20b
+# qwen/qwen3.8-27b
+# ...
 ```
 
 ### Mistral
@@ -730,7 +732,7 @@ If you're using the deprecated `.models` property:
 ### Before (Deprecated)
 
 ```python
-model = AIFactory.create_language("openai", "gpt-4", api_key="your-key")
+model = AIFactory.create_language("openai", "gpt-4o-mini", config={"api_key": "your-key"})
 available_models = model.models
 ```
 

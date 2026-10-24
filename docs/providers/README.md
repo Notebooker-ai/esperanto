@@ -16,13 +16,15 @@ Welcome to the Esperanto provider guide. This page helps you choose the right AI
 | [Ollama](./ollama.md) | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | [Mistral](./mistral.md) | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
 | [DeepSeek](./deepseek.md) | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| [SiliconFlow](./siliconflow.md) | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | [Perplexity](./perplexity.md) | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | [xAI](./xai.md) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | [DashScope (Qwen)](./dashscope.md) | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| [MiniMax](./minimax.md) | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| [MiniMax](./minimax.md) | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | [Novita](./openai-compatible.md)* | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| [Z.ai](./zai.md) | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | [oMLX](./openai-compatible.md)* | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️* |
-| [OpenRouter](./openrouter.md) | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| [OpenRouter](./openrouter.md) | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
 | [PayPerQ (PPQ)](./ppq.md) | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
 | [Transformers](./transformers.md) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | [Jina](./jina.md) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
@@ -53,7 +55,6 @@ Welcome to the Esperanto provider guide. This page helps you choose the right AI
 - **[Groq](./groq.md)**: LLM + STT (fastest inference)
 - **[Vertex AI](./vertex.md)**: LLM + Embedding + TTS (Google Cloud)
 - **[ElevenLabs](./elevenlabs.md)**: STT + TTS (premium voice quality)
-
 #### Need Privacy/Local Deployment?
 
 **Fully Local:**
@@ -81,6 +82,7 @@ Welcome to the Esperanto provider guide. This page helps you choose the right AI
 - **[Transformers](./transformers.md)**: Free (local deployment)
 - **[OpenAI-Compatible](./openai-compatible.md)**: Free (local deployment)
 - **[DeepSeek](./deepseek.md)**: Low API costs, strong performance
+- **[SiliconFlow](./siliconflow.md)**: Cost-effective access to DeepSeek, Qwen, and other models
 - **[OpenRouter](./openrouter.md)**: Compare prices across providers, some free models
 
 **Good Value:**
@@ -93,11 +95,12 @@ Welcome to the Esperanto provider guide. This page helps you choose the right AI
 
 **Best Overall Quality:**
 - **[OpenAI](./openai.md)**: GPT-4o, o1, o3, o4 (industry standard)
-- **[Anthropic](./anthropic.md)**: Claude 3.5 (excellent reasoning, long context)
+- **[Anthropic](./anthropic.md)**: Claude Sonnet 5.5, Opus 5.5 (excellent reasoning, 1M-token context)
 
 **Best for Reasoning:**
-- **[Anthropic](./anthropic.md)**: Claude 3.5 Sonnet, Opus (complex reasoning)
+- **[Anthropic](./anthropic.md)**: Claude Opus 5.5, Fable 5.1 (complex reasoning)
 - **[DeepSeek](./deepseek.md)**: deepseek-reasoner (step-by-step reasoning)
+- **[SiliconFlow](./siliconflow.md)**: DeepSeek and Qwen model access through one OpenAI-compatible API
 - **[OpenAI](./openai.md)**: o1, o3, o4 series (advanced reasoning)
 
 **Fastest Inference:**
@@ -106,15 +109,16 @@ Welcome to the Esperanto provider guide. This page helps you choose the right AI
 
 **Best for Code:**
 - **[OpenAI](./openai.md)**: GPT-4o, o1 series
-- **[Anthropic](./anthropic.md)**: Claude 3.5 Sonnet
+- **[Anthropic](./anthropic.md)**: Claude Sonnet 5.5, Opus 5.5
 - **[DeepSeek](./deepseek.md)**: Strong coding capabilities
+- **[SiliconFlow](./siliconflow.md)**: DeepSeek and Qwen coding models
 
 **Real-Time Information:**
 - **[Perplexity](./perplexity.md)**: Web search integration, citations
 - **[xAI](./xai.md)**: Real-time knowledge
 
 **Multiple Models Access:**
-- **[OpenRouter](./openrouter.md)**: 100+ models from various providers
+- **[OpenRouter](./openrouter.md)**: Hundreds of models from many providers
 - **[Novita](./openai-compatible.md)**: 200+ open-source models (OpenAI-compatible profile)
 - **[PayPerQ (PPQ)](./ppq.md)**: hundreds of models across LLM/embedding/STT/TTS, pay-as-you-go with one key
 
@@ -206,17 +210,19 @@ Welcome to the Esperanto provider guide. This page helps you choose the right AI
 | Provider | Streaming | JSON Mode | Long Context | Max Context |
 |----------|-----------|-----------|--------------|-------------|
 | [OpenAI](./openai.md) | ✅ | ✅ | ✅ | 128K-200K |
-| [Anthropic](./anthropic.md) | ✅ | ✅ | ✅ | 200K |
+| [Anthropic](./anthropic.md) | ✅ | ✅ | ✅ | 200K-1M |
 | [Google](./google.md) | ✅ | ✅ | ✅ | 2M (Gemini 1.5) |
 | [Azure](./azure.md) | ✅ | ✅ | ✅ | 128K-200K |
-| [Groq](./groq.md) | ✅ | ✅ | ❌ | 8K-32K |
+| [Groq](./groq.md) | ✅ | ✅ | ✅ | Model-dependent (128K on GPT-OSS) |
 | [Mistral](./mistral.md) | ✅ | ✅ | ✅ | 128K |
 | [DeepSeek](./deepseek.md) | ✅ | ✅ | ✅ | 64K |
-| [Perplexity](./perplexity.md) | ✅ | ✅ | ❌ | 32K |
+| [SiliconFlow](./siliconflow.md) | ✅ | ✅ | ✅ | Model-dependent |
+| [Perplexity](./perplexity.md) | ✅ | ✅ | ✅ | 127K-200K |
 | [xAI](./xai.md) | ✅ | ❌ | ✅ | 128K |
 | [DashScope](./dashscope.md) | ✅ | ✅ | ✅ | 1M (qwen-max-longcontext) |
-| [MiniMax](./minimax.md) | ✅ | ✅ | ✅ | 204K |
+| [MiniMax](./minimax.md) | ✅ | ✅ | ✅ | 1M |
 | [Novita](./openai-compatible.md) | ✅ | ✅ | ✅ | Model-dependent |
+| [Z.ai](./zai.md) | ✅ | ✅ | ✅ | Model-dependent |
 | [OpenRouter](./openrouter.md) | ✅ | ✅ | ✅ | Varies |
 | [Ollama](./ollama.md) | ✅ | ❌ | ✅ | Model-dependent |
 | [OpenAI-Compatible](./openai-compatible.md) | ✅ | ⚠️ | ⚠️ | Endpoint-dependent |
@@ -323,12 +329,14 @@ Require API keys, pay-per-use:
 - [Groq](./groq.md)
 - [Mistral](./mistral.md)
 - [DeepSeek](./deepseek.md)
+- [SiliconFlow](./siliconflow.md)
 - [DashScope (Qwen)](./dashscope.md)
 - [MiniMax](./minimax.md)
 - [Perplexity](./perplexity.md)
 - [xAI](./xai.md)
 - [OpenRouter](./openrouter.md)
 - [Novita](./openai-compatible.md) (OpenAI-compatible profile)
+- [Z.ai](./zai.md)
 - [PayPerQ (PPQ)](./ppq.md) (OpenAI-compatible profile)
 - [Jina](./jina.md)
 - [Voyage](./voyage.md)

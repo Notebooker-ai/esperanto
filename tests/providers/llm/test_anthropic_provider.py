@@ -1,10 +1,12 @@
 import os
+import warnings
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from pydantic import BaseModel
 
 from esperanto.common_types import (
+    EmptyCompletionError,
     FunctionCall,
     StructuredOutputValidationError,
     Tool,
@@ -131,7 +133,8 @@ def test_to_langchain(anthropic_model):
     # Test with structured output warning
     anthropic_model.structured = "json"
 
-    langchain_model = anthropic_model.to_langchain()
+    with pytest.warns(UserWarning, match="does not enforce"):
+        langchain_model = anthropic_model.to_langchain()
 
     # Test model configuration
     assert langchain_model.model == "claude-3-opus-20240229"
@@ -309,14 +312,38 @@ async def test_json_schema_structured_output_streaming_not_supported_async(
 def test_to_langchain_json_schema_structured_output(anthropic_model):
     anthropic_model.structured = {"type": "json_schema", "schema": TripPlan}
     langchain_model = anthropic_model.to_langchain()
-    # Newer langchain-anthropic promotes output_config from model_kwargs to an
-    # explicit field; accept it from either location.
     output_config = getattr(langchain_model, "output_config", None) or (
         langchain_model.model_kwargs.get("output_config", {})
-        if hasattr(langchain_model, "model_kwargs")
-        else {}
     )
     assert output_config.get("format", {}).get("type") == "json_schema"
+
+
+@pytest.mark.parametrize("declares_field", [True, False])
+def test_to_langchain_output_config_follows_langchain_version(
+    anthropic_model, monkeypatch, declares_field
+):
+    """output_config goes to the field when ChatAnthropic declares it, else to model_kwargs."""
+    import langchain_anthropic
+
+    captured = {}
+
+    class FakeChatAnthropic:
+        model_fields = {"output_config": None} if declares_field else {}
+
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(langchain_anthropic, "ChatAnthropic", FakeChatAnthropic)
+    anthropic_model.structured = {"type": "json_schema", "schema": TripPlan}
+    anthropic_model.to_langchain()
+
+    if declares_field:
+        output_config = captured["output_config"]
+        assert "model_kwargs" not in captured
+    else:
+        output_config = captured["model_kwargs"]["output_config"]
+        assert "output_config" not in captured
+    assert output_config["format"]["type"] == "json_schema"
 
 
 @pytest.fixture
@@ -1286,3 +1313,349 @@ def test_fallback_model_list_has_no_withdrawn_models():
     assert ids, "fallback list must not be empty"
     assert not any(model_id.startswith("claude-3") for model_id in ids)
     assert all(m.owned_by == "Anthropic" for m in model._get_models())
+
+
+def test_fallback_model_list_includes_current_generation():
+    model = AnthropicLanguageModel(api_key="test-key")
+    model.client = Mock()
+    model.client.get.side_effect = Exception("no network")
+
+    windows = {m.id: m.context_window for m in model._get_models()}
+
+    assert windows["claude-opus-5-5"] == 1_000_000
+    assert windows["claude-sonnet-5-5"] == 1_000_000
+    assert windows["claude-fable-5-1"] == 1_000_000
+    assert windows["claude-haiku-4-5-20251001"] == 200_000
+    assert model._get_default_model() in windows
+
+
+def test_live_model_list_uses_max_input_tokens_as_context_window():
+    """max_tokens is the output cap; the context window is max_input_tokens."""
+    model = AnthropicLanguageModel(api_key="test-key")
+    response = Mock()
+    response.status_code = 200
+    response.json.return_value = {
+        "data": [
+            {"id": "claude-opus-5-5", "max_input_tokens": 1_000_000, "max_tokens": 128_000},
+            {"id": "claude-legacy"},
+        ]
+    }
+    model.client = Mock()
+    model.client.get.return_value = response
+
+    windows = {m.id: m.context_window for m in model._get_models()}
+
+    assert windows == {"claude-opus-5-5": 1_000_000, "claude-legacy": None}
+
+
+# --------------------------------------------------------------------------- #
+# Empty structured responses, finish reasons and JSON-mode warning (#292)     #
+# --------------------------------------------------------------------------- #
+
+STRUCTURED_MODES = [
+    {"type": "json"},
+    {"type": "json_schema", "schema": TripPlan},
+]
+
+
+def _anthropic_response(stop_reason, content):
+    response = Mock()
+    response.status_code = 200
+    response.json.return_value = {
+        "id": "msg_empty",
+        "content": content,
+        "model": "claude-opus-5-5",
+        "role": "assistant",
+        "stop_reason": stop_reason,
+        "type": "message",
+        "usage": {"input_tokens": 10, "output_tokens": 3000},
+    }
+    return response
+
+
+THINKING_ONLY = [{"type": "thinking", "thinking": "", "signature": "sig"}]
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parametrize("structured", STRUCTURED_MODES)
+@pytest.mark.parametrize(
+    "stop_reason,finish_reason",
+    [("max_tokens", "length"), ("refusal", "content_filter")],
+)
+def test_empty_structured_response_raises(
+    anthropic_model, structured, stop_reason, finish_reason
+):
+    anthropic_model.structured = structured
+    anthropic_model.client.post.side_effect = None
+    anthropic_model.client.post.return_value = _anthropic_response(stop_reason, THINKING_ONLY)
+
+    with pytest.raises(EmptyCompletionError) as exc_info:
+        anthropic_model.chat_complete([{"role": "user", "content": "Plan a trip"}])
+
+    assert exc_info.value.finish_reason == finish_reason
+    assert exc_info.value.model == "claude-opus-5-5"
+    assert "test-key" not in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parametrize("structured", STRUCTURED_MODES)
+@pytest.mark.parametrize(
+    "stop_reason,finish_reason",
+    [("max_tokens", "length"), ("refusal", "content_filter")],
+)
+async def test_empty_structured_response_raises_async(
+    anthropic_model, structured, stop_reason, finish_reason
+):
+    anthropic_model.structured = structured
+    anthropic_model.async_client.post.side_effect = None
+    anthropic_model.async_client.post.return_value = _anthropic_response(
+        stop_reason, THINKING_ONLY
+    )
+
+    with pytest.raises(EmptyCompletionError) as exc_info:
+        await anthropic_model.achat_complete([{"role": "user", "content": "Plan a trip"}])
+
+    assert exc_info.value.finish_reason == finish_reason
+    assert exc_info.value.model == "claude-opus-5-5"
+    assert "test-key" not in str(exc_info.value)
+
+
+def test_structured_response_with_tool_calls_and_no_content_returns(anthropic_model):
+    anthropic_model.structured = {"type": "json_schema", "schema": TripPlan}
+    anthropic_model.client.post.side_effect = None
+    anthropic_model.client.post.return_value = _anthropic_response(
+        "tool_use",
+        [{"type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": {"city": "Paris"}}],
+    )
+
+    response = anthropic_model.chat_complete([{"role": "user", "content": "Plan a trip"}])
+
+    assert response.structured is None
+    assert response.choices[0].finish_reason == "tool_calls"
+    assert response.choices[0].message.tool_calls
+
+
+@pytest.mark.parametrize(
+    "stop_reason,finish_reason",
+    [
+        ("max_tokens", "length"),
+        ("refusal", "content_filter"),
+        ("end_turn", "stop"),
+        ("stop_sequence", "stop_sequence"),
+    ],
+)
+def test_empty_plain_response_returns_normalized_finish_reason(
+    anthropic_model, stop_reason, finish_reason
+):
+    anthropic_model.structured = None
+    anthropic_model.client.post.side_effect = None
+    anthropic_model.client.post.return_value = _anthropic_response(stop_reason, THINKING_ONLY)
+
+    response = anthropic_model.chat_complete([{"role": "user", "content": "Hi"}])
+
+    assert response.choices[0].finish_reason == finish_reason
+    assert not response.choices[0].message.content
+
+
+@pytest.mark.parametrize(
+    "stop_reason,finish_reason",
+    [("max_tokens", "length"), ("refusal", "content_filter"), ("end_turn", "stop")],
+)
+def test_stream_finish_reason_is_normalized(anthropic_model, stop_reason, finish_reason):
+    chunk = anthropic_model._normalize_stream_event(
+        {"type": "message_delta", "delta": {"stop_reason": stop_reason}}
+    )
+    assert chunk.choices[0].finish_reason == finish_reason
+
+
+@pytest.mark.parametrize("structured", [{"type": "json"}, {"type": "json_object"}, "json"])
+def test_json_mode_warns_in_chat_complete(anthropic_model, structured):
+    anthropic_model.structured = structured
+    anthropic_model.client.post.side_effect = None
+    anthropic_model.client.post.return_value = _anthropic_response(
+        "end_turn", [{"type": "text", "text": '{"a": 1}'}]
+    )
+
+    with pytest.warns(UserWarning, match="does not enforce") as record:
+        anthropic_model.chat_complete([{"role": "user", "content": "Hi"}])
+
+    # stacklevel points at the caller, not at Esperanto internals
+    assert record[0].filename == __file__
+
+
+@pytest.mark.asyncio
+async def test_json_mode_warns_in_achat_complete(anthropic_model):
+    anthropic_model.structured = {"type": "json"}
+    anthropic_model.async_client.post.side_effect = None
+    anthropic_model.async_client.post.return_value = _anthropic_response(
+        "end_turn", [{"type": "text", "text": '{"a": 1}'}]
+    )
+
+    with pytest.warns(UserWarning, match="does not enforce"):
+        await anthropic_model.achat_complete([{"role": "user", "content": "Hi"}])
+
+
+def test_json_mode_warns_in_to_langchain(anthropic_model):
+    anthropic_model.structured = {"type": "json"}
+
+    with pytest.warns(UserWarning, match="does not enforce") as record:
+        anthropic_model.to_langchain()
+
+    assert record[0].filename == __file__
+
+
+def test_json_schema_mode_does_not_warn(anthropic_model):
+    anthropic_model.structured = {"type": "json_schema", "schema": TripPlan}
+    anthropic_model.client.post.side_effect = None
+    anthropic_model.client.post.return_value = _anthropic_response(
+        "end_turn",
+        [{"type": "text", "text": '{"summary": "s", "next_steps": []}'}],
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        anthropic_model.chat_complete([{"role": "user", "content": "Plan a trip"}])
+        anthropic_model.to_langchain()
+
+
+# --------------------------------------------------------------------------- #
+# Forced tool choice on models that reject it (#298)                          #
+# --------------------------------------------------------------------------- #
+
+NO_FORCED_TOOL_CHOICE_MODELS = [
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-fable-5-1",
+    "claude-mythos-5-1",
+]
+FORCED_TOOL_CHOICES = [
+    "required",
+    {"type": "function", "function": {"name": "get_weather"}},
+]
+
+
+def _tool_model(model_name, response):
+    model = AnthropicLanguageModel(api_key="test-key", model_name=model_name)
+    model.client = Mock()
+    model.client.post.return_value = response
+    model.async_client = AsyncMock()
+    model.async_client.post.return_value = response
+    return model
+
+
+def _text_response():
+    response = Mock()
+    response.status_code = 200
+    response.json.return_value = {
+        "id": "msg_1",
+        "content": [{"type": "text", "text": "ok"}],
+        "model": "claude-opus-5-5",
+        "role": "assistant",
+        "stop_reason": "end_turn",
+        "type": "message",
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+    }
+    return response
+
+
+@pytest.mark.parametrize("model_name", NO_FORCED_TOOL_CHOICE_MODELS)
+@pytest.mark.parametrize("tool_choice", FORCED_TOOL_CHOICES)
+def test_forced_tool_choice_falls_back_to_auto(model_name, tool_choice, sample_tools):
+    model = _tool_model(model_name, _text_response())
+
+    with pytest.warns(UserWarning, match="does not support forced tool choice") as record:
+        model.chat_complete([{"role": "user", "content": "Hi"}], tools=sample_tools, tool_choice=tool_choice)
+
+    payload = model.client.post.call_args[1]["json"]
+    assert payload["tool_choice"] == {"type": "auto"}
+    assert model_name in str(record[0].message)
+    # stacklevel points at the caller, not at Esperanto internals
+    assert record[0].filename == __file__
+
+
+def test_forced_specific_tool_warning_names_the_tool(sample_tools):
+    model = _tool_model("claude-opus-5-5", _text_response())
+
+    with pytest.warns(UserWarning, match="Name the 'get_weather' tool"):
+        model.chat_complete(
+            [{"role": "user", "content": "Hi"}],
+            tools=sample_tools,
+            tool_choice={"type": "function", "function": {"name": "get_weather"}},
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_choice", FORCED_TOOL_CHOICES)
+async def test_forced_tool_choice_falls_back_to_auto_async(tool_choice, sample_tools):
+    model = _tool_model("claude-sonnet-5-5", _text_response())
+
+    with pytest.warns(UserWarning, match="does not support forced tool choice") as record:
+        await model.achat_complete(
+            [{"role": "user", "content": "Hi"}], tools=sample_tools, tool_choice=tool_choice
+        )
+
+    payload = model.async_client.post.call_args[1]["json"]
+    assert payload["tool_choice"] == {"type": "auto"}
+    assert record[0].filename == __file__
+
+
+def test_forced_tool_choice_fallback_keeps_parallel_setting(sample_tools):
+    model = _tool_model("claude-fable-5-1", _text_response())
+
+    with pytest.warns(UserWarning):
+        model.chat_complete(
+            [{"role": "user", "content": "Hi"}],
+            tools=sample_tools,
+            tool_choice="required",
+            parallel_tool_calls=False,
+        )
+
+    payload = model.client.post.call_args[1]["json"]
+    assert payload["tool_choice"] == {"type": "auto", "disable_parallel_tool_use": True}
+
+
+def test_forced_tool_choice_fallback_matches_suffixed_ids(sample_tools):
+    model = _tool_model("claude-opus-5-5-20261001", _text_response())
+
+    with pytest.warns(UserWarning):
+        model.chat_complete([{"role": "user", "content": "Hi"}], tools=sample_tools, tool_choice="required")
+
+    assert model.client.post.call_args[1]["json"]["tool_choice"] == {"type": "auto"}
+
+
+@pytest.mark.parametrize("model_name", NO_FORCED_TOOL_CHOICE_MODELS)
+@pytest.mark.parametrize("tool_choice,expected", [("auto", {"type": "auto"}), ("none", None)])
+def test_unforced_tool_choice_does_not_warn(model_name, tool_choice, expected, sample_tools):
+    model = _tool_model(model_name, _text_response())
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model.chat_complete([{"role": "user", "content": "Hi"}], tools=sample_tools, tool_choice=tool_choice)
+
+    payload = model.client.post.call_args[1]["json"]
+    if expected is None:
+        assert "tool_choice" not in payload
+    else:
+        assert payload["tool_choice"] == expected
+
+
+@pytest.mark.parametrize("model_name", ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001"])
+@pytest.mark.parametrize(
+    "tool_choice,expected",
+    [
+        ("required", {"type": "any"}),
+        (
+            {"type": "function", "function": {"name": "get_weather"}},
+            {"type": "tool", "name": "get_weather"},
+        ),
+    ],
+)
+def test_older_models_keep_forced_tool_choice(model_name, tool_choice, expected, sample_tools):
+    model = _tool_model(model_name, _text_response())
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model.chat_complete([{"role": "user", "content": "Hi"}], tools=sample_tools, tool_choice=tool_choice)
+
+    assert model.client.post.call_args[1]["json"]["tool_choice"] == expected

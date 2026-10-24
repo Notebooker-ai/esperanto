@@ -65,12 +65,12 @@ class EmbeddingModel(HttpConnectionMixin, ABC):
     # breaks otherwise-correct user code (ARCHITECTURE.md "Hot-Swap-First Defaults").
     MAX_BATCH_SIZE: ClassVar[int] = 0
 
-    api_key: Optional[str] = None
+    api_key: Optional[str] = field(default=None, repr=False)
     base_url: Optional[str] = None
     model_name: Optional[str] = None
     organization: Optional[str] = None
-    config: Optional[Dict[str, Any]] = None
-    _config: Dict[str, Any] = field(default_factory=dict)
+    config: Optional[Dict[str, Any]] = field(default=None, repr=False)
+    _config: Dict[str, Any] = field(default_factory=dict, repr=False)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

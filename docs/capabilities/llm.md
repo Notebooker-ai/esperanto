@@ -74,8 +74,13 @@ for chunk in model.chat_complete(messages, stream=True):
     print(chunk.choices[0].delta.content, end="", flush=True)
 
 # Async streaming
-async for chunk in model.achat_complete(messages, stream=True):
-    print(chunk.choices[0].delta.content, end="", flush=True)
+import asyncio
+
+async def stream_async():
+    async for chunk in await model.achat_complete(messages, stream=True):
+        print(chunk.choices[0].delta.content, end="", flush=True)
+
+asyncio.run(stream_async())
 ```
 
 ## Parameters
@@ -203,13 +208,15 @@ print(response.structured)   # parsed/validated CountryList
 
 Notes:
 - Schema mode is config-driven and currently non-streaming in Esperanto v1 (`stream=True` raises `ValueError`).
+- In both JSON and schema mode, a non-streaming response with empty content and no tool calls raises `EmptyCompletionError` (an `EsperantoError` carrying `model` and `finish_reason`) on every provider, instead of returning an empty string. `finish_reason="length"` usually means reasoning used up `max_tokens`.
+- Anthropic has no enforceable JSON mode: `{"type": "json"}` is prompt-guided only and emits a `UserWarning`. Use schema mode for guaranteed JSON.
 - OpenAI-compatible endpoints fail fast when `json_schema` response format is unsupported.
 - OpenRouter schema mode is model/provider-dependent and fail-fast (unsupported schema requests are surfaced directly).
 - xAI and Perplexity schema mode are model/provider-dependent and fail-fast (unsupported schema requests are surfaced directly).
 - Anthropic schema mode uses native `output_config.format` and requires a recent model (Opus 4.5+, Sonnet 4.5+, or Haiku 4.5); Anthropic strict tool-use schema enforcement is separate and unchanged in v1.
 - Cohere schema mode uses native `response_format` (`{"type": "json_object", "schema": ...}`) via the Cohere v2 chat API. `response.structured` is populated on `chat_complete`; `to_langchain()` does not carry schema mode — call `.with_structured_output()` on the returned LangChain model instead. Cohere rejects structured output combined with `tools` or RAG `documents`/`connectors`; Esperanto raises a clear `ValueError` for those combinations rather than sending a request the API can't accept.
 
-**JSON Mode Supported Providers**: OpenAI, Anthropic, Google, Groq, OpenAI-Compatible (varies), Mistral, DeepSeek, xAI, DashScope, MiniMax, OpenRouter, Azure, Perplexity, Cohere  
+**JSON Mode Supported Providers**: OpenAI, Anthropic, Google, Groq, OpenAI-Compatible (varies), Mistral, DeepSeek, xAI, DashScope, MiniMax, Z.ai, OpenRouter, Azure, Perplexity, Cohere  
 **Schema Mode Supported Providers (v1)**: OpenAI, Azure, OpenAI-Compatible, Google (Gemini), Vertex AI, Anthropic, OpenRouter (model-dependent), Groq, Mistral, Ollama, xAI (model-dependent), Perplexity (model-dependent), Cohere
 
 ## Provider Selection

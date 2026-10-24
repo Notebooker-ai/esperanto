@@ -146,8 +146,13 @@ for chunk in model.chat_complete(messages, stream=True):
     print(chunk.choices[0].delta.content, end="", flush=True)
 
 # Async streaming
-async for chunk in model.achat_complete(messages, stream=True):
-    print(chunk.choices[0].delta.content, end="", flush=True)
+import asyncio
+
+async def stream_async():
+    async for chunk in await model.achat_complete(messages, stream=True):
+        print(chunk.choices[0].delta.content, end="", flush=True)
+
+asyncio.run(stream_async())
 ```
 
 **Example - JSON Mode:**
@@ -409,6 +414,14 @@ model = AIFactory.create_speech_to_text(
 
 ### Text-to-Speech
 
+**Supported Models:**
+
+- `gemini-3.1-flash-tts-preview` (default)
+- `gemini-3.8-flash-tts` and `gemini-3.8-flash-lite-tts`
+- `gemini-2.5-flash-preview-tts` and `gemini-2.5-pro-preview-tts` (legacy)
+
+Every model returns `audio/wav`. Gemini 3.8 sends a complete WAV file, which Esperanto passes through unchanged. Older models send raw PCM, which Esperanto wraps in a WAV header.
+
 **Available Voices:**
 
 Google TTS provides 30+ unique voices with distinct personalities:
@@ -605,8 +618,8 @@ model = AIFactory.create_language("google", "gemini-2.5-flash")
 langchain_model = model.to_langchain()
 
 # Use with LangChain
-from langchain.chains import ConversationChain
-chain = ConversationChain(llm=langchain_model)
+response = langchain_model.invoke("Hello!")
+print(response.content)
 ```
 
 When `structured` is set, `to_langchain()` forwards Gemini-native structured params (`response_mime_type`, and `response_schema` for `json_schema` mode).

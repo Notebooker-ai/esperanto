@@ -7,6 +7,145 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.28.0] - 2026-10-03
+
+### Added
+
+- **Z.ai provider.** New built-in OpenAI-compatible profile (`zai`) for Z.ai's
+  GLM models, defaulting to `glm-5.2`. Configure with `ZAI_API_KEY`; override the
+  endpoint with `ZAI_BASE_URL`. (#234)
+- **`EmptyCompletionError` for empty structured responses.** When `structured`
+  is set (`json` or `json_schema`) and a choice comes back with empty content
+  and no tool calls, every LLM provider now raises
+  `EmptyCompletionError(EsperantoError)` instead of returning an empty string.
+  The error carries `model` and `finish_reason`, and its message suggests
+  raising `max_tokens` when the budget ran out. This mainly affects Claude
+  Opus 5.5, whose thinking can consume the whole `max_tokens` budget. Plain
+  chat (no `structured`) is unchanged. Streaming is not checked. (#292)
+
+### Changed
+
+- **Anthropic model lists include the current generation.** The offline
+  fallback list and `AIFactory.get_provider_models("anthropic")` now include
+  `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-fable-5-1`. Context windows
+  now match Anthropic's Models API: `claude-opus-5`, `claude-sonnet-5` and
+  `claude-sonnet-4-5-20250929` report 1M tokens instead of 200K. When the live
+  `/models` call succeeds, `context_window` now comes from `max_input_tokens`
+  instead of `max_tokens` (the output cap). Both lists now share one
+  definition. The default model is unchanged (`claude-sonnet-5`).
+- **Anthropic finish reasons use the shared vocabulary.** `stop_reason:
+  "max_tokens"` is now reported as `finish_reason="length"`, and `"refusal"` as
+  `"content_filter"`, matching the other providers. This applies to streaming
+  and non-streaming responses. Code that compared Anthropic's `finish_reason`
+  to `"max_tokens"` or `"refusal"` must use the new values. (#292)
+- **Anthropic warns on `structured={"type": "json"}`.** Anthropic cannot
+  enforce a generic JSON mode, so the output is prompt-guided only.
+  `chat_complete()`, `achat_complete()` and `to_langchain()` now emit a
+  `UserWarning` recommending `{"type": "json_schema", "schema": ...}`. Request
+  behavior is unchanged. (#292)
+
+- **The `transformers` extra accepts transformers 5 and sentence-transformers 6.**
+  The extra previously capped `transformers<5` and `sentence-transformers<6`,
+  which kept installs on transformers 4.57, a version with published security
+  advisories fixed only in 5.x. The caps are now `<6` and `<7`; local embedding
+  and reranking were verified on transformers 5.18 and sentence-transformers
+  6.1. The transformers reranker now passes `dtype` instead of the deprecated
+  `torch_dtype`. The development lockfile is refreshed to current releases.
+  (#312)
+
+### Documentation
+
+- **OpenRouter page refreshed.** Model ids checked against OpenRouter's live
+  model list (several, including every `anthropic/claude-3*` id, no longer
+  exist). The page now documents the OpenRouter embedding provider, which it
+  wrongly listed as unavailable. Speech and transcription model lists, the
+  LangChain example (`ConversationChain` no longer exists in LangChain 1.x) and
+  model discovery via `AIFactory.get_provider_models("openrouter")` are
+  updated. The provider matrix now marks OpenRouter embeddings, STT and TTS as
+  supported. (#299)
+- **LangChain and async streaming examples work again.** The LangChain guide
+  is rewritten for LangChain 1.x (LCEL chains, message-list memory,
+  `create_agent`, retrieval with an Esperanto embeddings adapter, streaming,
+  async); 18 of its 24 examples failed before, from removed LangChain APIs
+  and `create_language(..., api_key=...)`, which the factory does not accept.
+  The README and 12 provider pages replace `ConversationChain` with
+  `invoke()`. Async streaming examples now `await achat_complete(...)` before
+  iterating. (#302)
+
+### Fixed
+
+- **Anthropic `to_langchain()` no longer warns with `json_schema` on
+  langchain-anthropic 1.7+.** langchain-anthropic 1.7 declares `output_config`
+  as a field and warns when it arrives through `model_kwargs`, so every
+  conversion with `structured={"type": "json_schema", ...}` emitted a
+  `UserWarning`. Esperanto now passes `output_config` directly when
+  `ChatAnthropic` declares it, and keeps `model_kwargs` for older versions. The
+  schema reached the request either way. (#311)
+- **Perplexity works again without an explicit model.** The default
+  Perplexity model, `llama-3-sonar-large-32k-online`, is rejected by
+  Perplexity as invalid, so `create_language("perplexity", None)` failed. The default
+  is now `sonar`. `get_provider_models("perplexity")` listed only retired
+  `llama-3.1-sonar-*` models and the provider's own list included the
+  deprecated `sonar-reasoning` and the invalid `r1-1776`; both now share one
+  list of current models (`sonar`, `sonar-pro`, `sonar-reasoning-pro`,
+  `sonar-deep-research`) with context windows. Docs updated. (#309)
+- **Groq works again without an explicit model.** The default Groq model,
+  `mixtral-8x7b-32768`, was retired by Groq, so `create_language("groq", None)`
+  failed. The default is now `openai/gpt-oss-120b`. Groq model discovery
+  reports each model's real context window instead of a fixed 128K, and the
+  Groq docs and examples use current models. (#304)
+- **`to_langchain()` keeps the configured timeout on every provider.**
+  Anthropic, Google, Vertex, Mistral, OpenRouter and Cohere dropped
+  Esperanto's timeout when converting to LangChain, so converted models used
+  the LangChain/SDK default instead. They now pass the resolved timeout
+  (`config["timeout"]`, then `ESPERANTO_LLM_TIMEOUT`, then 60 seconds).
+  Mistral's LangChain timeout is whole seconds, so fractional values round
+  up. OpenRouter now also gives LangChain its own HTTP clients with
+  Esperanto's SSL settings, as OpenAI does. (#305)
+- **Forced tool choice no longer fails on Claude Opus 5.5, Sonnet 5.5, Fable
+  5.1 and Mythos 5.1.** These models reject `tool_choice="required"` and a specific tool
+  with a 400. Esperanto now sends `tool_choice="auto"` for them (keeping
+  `parallel_tool_calls=False`) and emits a `UserWarning` saying the tool call is
+  no longer guaranteed. Other models are unchanged. (#298)
+- **Gemini 3.8 TTS audio no longer ends in a burst of noise.**
+  `gemini-3.8-flash-tts` and `gemini-3.8-flash-lite-tts` return a complete WAV
+  file, which Esperanto wrapped in a second WAV header, so players read the inner
+  header as samples. Google TTS now passes WAV responses through unchanged and
+  wraps only raw PCM, using the sample rate from the response mime type when
+  present. Both 3.8 models are now listed. (#291)
+- **Ollama timeout preserved in LangChain conversion.** `.to_langchain()` now
+  passes the configured timeout to both sync and async `ChatOllama` clients,
+  which previously waited indefinitely. Precedence is unchanged: `config["timeout"]`,
+  then `ESPERANTO_LLM_TIMEOUT`, then 60 seconds. Slow local inference may need a
+  higher timeout. (#290)
+
+## [2.27.0] - 2026-09-05
+
+### Added
+
+- **MiniMax M3 and text-to-speech support.** MiniMax now defaults to
+  `MiniMax-M3` with its 1M-token context window and supports native TTS through
+  `/v1/t2a_v2`, including sync/async generation and account voice discovery.
+  (#265)
+
+- **SiliconFlow provider.** New built-in OpenAI-compatible profile (`siliconflow`)
+  for SiliconFlow's hosted DeepSeek / Qwen / GLM / Kimi models, with static model
+  discovery via `AIFactory.get_provider_models("siliconflow")`. Defaults to the
+  global endpoint (`api.siliconflow.com`); set `SILICONFLOW_BASE_URL` for a
+  mainland China (`api.siliconflow.cn`) account. (#235)
+
+### Documentation
+
+- **MiniMax Anthropic-compatible endpoint.** Documented how to route the native
+  `anthropic` provider at MiniMax's Anthropic-protocol API via `base_url`, with
+  the regional (international / mainland China) URLs. (#278)
+
+### Fixed
+
+- **Provider credentials are redacted from object representations.** API keys
+  and configuration dictionaries no longer appear in dataclass `repr` output,
+  preventing failed requests and test tracebacks from leaking credentials.
+
 ## [2.26.0] - 2026-07-29
 
 ### Added

@@ -5,6 +5,7 @@ import logging
 import os
 import time
 import uuid
+import warnings
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -46,6 +47,56 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from langchain_anthropic import ChatAnthropic
+
+# Known Anthropic models and their context windows (max input tokens), as
+# reported by the Models API. Used when the live /models call is unavailable
+# and by static model discovery.
+ANTHROPIC_MODELS = (
+    ("claude-opus-5-5", 1_000_000),
+    ("claude-sonnet-5-5", 1_000_000),
+    ("claude-fable-5-1", 1_000_000),
+    ("claude-opus-5", 1_000_000),
+    ("claude-sonnet-5", 1_000_000),
+    ("claude-opus-4-5-20251101", 200_000),
+    ("claude-sonnet-4-5-20250929", 1_000_000),
+    ("claude-haiku-4-5-20251001", 200_000),
+)
+
+# Models that reject forced tool use (tool_choice "any" / "tool") with a 400.
+# Matched by prefix so suffixed or dated variants are covered.
+_NO_FORCED_TOOL_CHOICE_PREFIXES = (
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-fable-5-1",
+    "claude-mythos-5-1",
+)
+
+
+def _rejects_forced_tool_choice(model_name: str) -> bool:
+    """Whether the model rejects tool_choice "any" / "tool"."""
+    return bool(model_name) and model_name.startswith(_NO_FORCED_TOOL_CHOICE_PREFIXES)
+
+
+# Anthropic stop_reason values mapped to the OpenAI finish_reason vocabulary
+# used by the other providers. Unlisted values pass through unchanged.
+_FINISH_REASONS = {
+    "end_turn": "stop",
+    "tool_use": "tool_calls",
+    "max_tokens": "length",
+    "refusal": "content_filter",
+}
+
+_JSON_MODE_WARNING = (
+    'Anthropic does not enforce structured={"type": "json"}; output is '
+    'prompt-guided only. Use {"type": "json_schema", "schema": ...} for '
+    "guaranteed JSON (requires a Claude 4.5 model or newer)."
+)
+
+
+def _warn_if_json_mode(resolved_structured: Optional[ResolvedStructuredOutput]) -> None:
+    """Warn that JSON mode is best-effort on Anthropic (only json_schema is enforced)."""
+    if resolved_structured and resolved_structured.mode == "json_object":
+        warnings.warn(_JSON_MODE_WARNING, UserWarning, stacklevel=3)
 
 
 @dataclass
@@ -146,6 +197,28 @@ class AnthropicLanguageModel(LanguageModel):
             # Pass through if it's already in Anthropic format
             result["type"] = str(tool_choice)
 
+        # Newer models reject forced tool use. Fall back to "auto" so code that
+        # works on other providers keeps working, and warn that the tool call
+        # is no longer guaranteed.
+        if result.get("type") in ("any", "tool"):
+            model_name = self.get_model_name()
+            if _rejects_forced_tool_choice(model_name):
+                tool_name = result.pop("name", None)
+                result["type"] = "auto"
+                hint = (
+                    f" Name the '{tool_name}' tool in the prompt to steer the model."
+                    if tool_name
+                    else ""
+                )
+                warnings.warn(
+                    f"Anthropic model '{model_name}' does not support forced tool "
+                    f"choice; sending tool_choice='auto' instead, so a tool call is "
+                    f"no longer guaranteed.{hint} For guaranteed JSON output, use "
+                    'structured={"type": "json_schema", ...}.',
+                    UserWarning,
+                    stacklevel=4,
+                )
+
         # Handle parallel tool calls - Anthropic uses disable_parallel_tool_use
         if parallel_tool_calls is False:
             result["disable_parallel_tool_use"] = True
@@ -166,33 +239,15 @@ class AnthropicLanguageModel(LanguageModel):
                 Model(
                     id=model["id"],
                     owned_by="Anthropic",
-                    context_window=model.get("max_tokens", 200000),
+                    context_window=model.get("max_input_tokens"),
                 )
                 for model in models_data.get("data", [])
             ]
         except Exception:
             # Fallback to known models if API call fails
             return [
-                Model(
-                    id="claude-sonnet-5",
-                    owned_by="Anthropic",
-                    context_window=200000,
-                ),
-                Model(
-                    id="claude-opus-5",
-                    owned_by="Anthropic",
-                    context_window=200000,
-                ),
-                Model(
-                    id="claude-sonnet-4-5-20250929",
-                    owned_by="Anthropic",
-                    context_window=200000,
-                ),
-                Model(
-                    id="claude-haiku-4-5-20251001",
-                    owned_by="Anthropic",
-                    context_window=200000,
-                ),
+                Model(id=model_id, owned_by="Anthropic", context_window=context_window)
+                for model_id, context_window in ANTHROPIC_MODELS
             ]
 
     def _prepare_messages(
@@ -317,13 +372,7 @@ class AnthropicLanguageModel(LanguageModel):
 
         # Map Anthropic stop_reason to standard finish_reason
         stop_reason = response_data.get("stop_reason", "stop")
-        # Anthropic uses "tool_use" when model wants to call tools
-        if stop_reason == "tool_use":
-            finish_reason = "tool_calls"
-        elif stop_reason == "end_turn":
-            finish_reason = "stop"
-        else:
-            finish_reason = stop_reason
+        finish_reason = _FINISH_REASONS.get(stop_reason, stop_reason)
 
         return ChatCompletion(
             id=response_data.get("id", str(uuid.uuid4())),
@@ -487,12 +536,7 @@ class AnthropicLanguageModel(LanguageModel):
             delta = event_data.get("delta", {})
             stop_reason = delta.get("stop_reason", "stop")
             # Map Anthropic stop_reason to standard finish_reason
-            if stop_reason == "tool_use":
-                finish_reason = "tool_calls"
-            elif stop_reason == "end_turn":
-                finish_reason = "stop"
-            else:
-                finish_reason = stop_reason
+            finish_reason = _FINISH_REASONS.get(stop_reason, stop_reason)
 
             return ChatCompletionChunk(
                 id=str(uuid.uuid4()),
@@ -700,6 +744,7 @@ class AnthropicLanguageModel(LanguageModel):
             self.structured,
             allow_string_json_alias=True,
         )
+        _warn_if_json_mode(resolved_structured)
 
         if resolved_structured and resolved_structured.is_schema_mode and should_stream:
             raise ValueError(
@@ -816,6 +861,7 @@ class AnthropicLanguageModel(LanguageModel):
             self.structured,
             allow_string_json_alias=True,
         )
+        _warn_if_json_mode(resolved_structured)
 
         if resolved_structured and resolved_structured.is_schema_mode and should_stream:
             raise ValueError(
@@ -907,6 +953,7 @@ class AnthropicLanguageModel(LanguageModel):
             self.structured,
             allow_string_json_alias=True,
         )
+        _warn_if_json_mode(resolved_structured)
         if resolved_structured and resolved_structured.is_schema_mode:
             schema_payload = (
                 resolved_structured.response_format
@@ -914,12 +961,18 @@ class AnthropicLanguageModel(LanguageModel):
                 .get("schema")
             )
             if isinstance(schema_payload, dict):
-                model_kwargs["output_config"] = {
+                output_config = {
                     "format": {
                         "type": "json_schema",
                         "schema": schema_payload,
                     }
                 }
+                # langchain-anthropic >= 1.7 declares output_config as a field
+                # and warns when it arrives through model_kwargs.
+                if "output_config" in getattr(ChatAnthropic, "model_fields", {}):
+                    kwargs["output_config"] = output_config
+                else:
+                    model_kwargs["output_config"] = output_config
         if model_kwargs:
             kwargs["model_kwargs"] = model_kwargs
 
@@ -936,5 +989,7 @@ class AnthropicLanguageModel(LanguageModel):
             base_url = self.base_url.rstrip("/").removesuffix("/v1")
             if base_url and base_url != "https://api.anthropic.com":
                 kwargs["base_url"] = base_url
+
+        kwargs["timeout"] = self._get_timeout()
 
         return ChatAnthropic(**kwargs)  # type: ignore[arg-type]

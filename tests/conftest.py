@@ -84,7 +84,7 @@ def mock_groq_response():
         def __init__(self):
             self.id = "1234"
             self.created = 1677858242
-            self.model = "mixtral-8x7b-32768"
+            self.model = "openai/gpt-oss-120b"
             self.choices = [Choice()]
             self.usage = Usage()
 
@@ -238,7 +238,7 @@ def groq_model(mock_groq_client):
 
     model = GroqLanguageModel(
         api_key="test-key",
-        model_name="mixtral-8x7b-32768",
+        model_name="openai/gpt-oss-120b",
         temperature=1.0,
         max_tokens=850,
         top_p=0.9,
@@ -295,6 +295,8 @@ _PROVIDER_ENV_VARS = [
     "DEEPSEEK_API_KEY",
     "DASHSCOPE_API_KEY",
     "MINIMAX_API_KEY",
+    "ZAI_API_KEY",
+    "ZAI_BASE_URL",
     "PPQ_API_KEY",
     "PPQ_BASE_URL",
 ]

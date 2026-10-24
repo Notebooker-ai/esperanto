@@ -117,6 +117,29 @@ DEEPSEEK_API_KEY=...
 
 → **[Full DeepSeek Setup Guide](./providers/deepseek.md)**
 
+#### SiliconFlow
+```bash
+SILICONFLOW_API_KEY=...
+# Optional: use the China endpoint instead of the default global endpoint
+SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
+```
+
+```python
+from esperanto.factory import AIFactory
+
+# Default global endpoint: https://api.siliconflow.com/v1
+model = AIFactory.create_language("siliconflow", "deepseek-ai/DeepSeek-V3.1-Terminus")
+
+# China endpoint override
+model = AIFactory.create_language(
+    "siliconflow",
+    "deepseek-ai/DeepSeek-V3.1-Terminus",
+    config={"base_url": "https://api.siliconflow.cn/v1"},
+)
+```
+
+→ **[Full SiliconFlow Setup Guide](./providers/siliconflow.md)**
+
 #### Perplexity
 ```bash
 PERPLEXITY_API_KEY=...
@@ -139,11 +162,29 @@ DASHSCOPE_API_KEY=...
 → **[Full DashScope Setup Guide](./providers/dashscope.md)**
 
 #### MiniMax
+
+> [!IMPORTANT]
+> MiniMax keys are region-specific. Use `api.minimax.cn` for mainland China
+> keys and `api.minimax.io` for international keys. A region mismatch is
+> returned by MiniMax as `invalid api key`.
+
 ```bash
 MINIMAX_API_KEY=...
+# International endpoint (default)
+MINIMAX_BASE_URL=https://api.minimax.io/v1
+
+# Mainland China endpoint (keys are region-specific; legacy api.minimaxi.com also works)
+MINIMAX_BASE_URL=https://api.minimax.cn/v1
 ```
 
 → **[Full MiniMax Setup Guide](./providers/minimax.md)**
+
+#### Z.ai
+```bash
+ZAI_API_KEY=...
+```
+
+→ **[Full Z.ai Setup Guide](./providers/zai.md)**
 
 #### OpenRouter
 ```bash
@@ -659,7 +700,7 @@ def create_llm_with_fallback():
         return AIFactory.create_language("openai", "gpt-4", config={"timeout": 30.0})
     except Exception as e:
         print(f"Primary failed: {e}, falling back to Groq")
-        return AIFactory.create_language("groq", "mixtral-8x7b-32768")
+        return AIFactory.create_language("groq", "openai/gpt-oss-120b")
 
 model = create_llm_with_fallback()
 ```

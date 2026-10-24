@@ -4,6 +4,7 @@ This module exports all public components of the library.
 """
 
 from esperanto.common_types import (
+    EmptyCompletionError,
     EsperantoError,
     FunctionCall,
     ProviderCapabilityError,
@@ -149,6 +150,11 @@ except ImportError:
     OpenRouterSpeechToTextModel = None  # type: ignore[assignment,misc]
 
 try:
+    from esperanto.providers.tts.minimax import MiniMaxTextToSpeechModel
+except ImportError:
+    MiniMaxTextToSpeechModel = None  # type: ignore[assignment,misc]
+
+try:
     from esperanto.providers.llm.cohere import CohereLanguageModel
 except ImportError:
     CohereLanguageModel = None  # type: ignore[assignment,misc]
@@ -188,6 +194,7 @@ __all__ = [
     "image_to_content_part",
     "create_image_message",
     # Errors
+    "EmptyCompletionError",
     "EsperantoError",
     "ProviderCapabilityError",
     # Profiles
@@ -217,6 +224,7 @@ __all__ = [
     "DeepgramSpeechToTextModel",
     "OpenRouterTextToSpeechModel",
     "OpenRouterSpeechToTextModel",
+    "MiniMaxTextToSpeechModel",
     "CohereLanguageModel",
     "CohereEmbeddingModel",
     "CohereRerankerModel",

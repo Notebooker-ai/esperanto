@@ -162,6 +162,8 @@ Each release-gated test class is `skipif`-gated on the env vars its provider nee
 | OpenRouter | `OPENROUTER_API_KEY` |
 | Perplexity | `PERPLEXITY_API_KEY` (note: tool-calling tests skip — Perplexity API doesn't support tools) |
 | MiniMax | `MINIMAX_API_KEY` |
+| SiliconFlow | `SILICONFLOW_API_KEY` |
+| Z.ai | `ZAI_API_KEY` |
 | DashScope (Qwen) | `DASHSCOPE_API_KEY` |
 | Jina | `JINA_API_KEY` |
 | Voyage | `VOYAGE_API_KEY` |
@@ -247,10 +249,13 @@ Run the release suite **before tagging a release** — it's the last gate that c
 3. Run `uv run pytest` (default, mocked) — must be green.
 4. Run `uv run ruff check .` and `uv run mypy src/esperanto` — must be green.
 5. **Run `uv run pytest -m release`** — must be green or have only known-tracked xfails.
-6. Bump version, commit, tag, push tag.
-7. Build + publish.
+6. Bump the version, regenerate `uv.lock`, and run `make package-check` against
+   the exact candidate — its clean-room wheel/sdist checks must be green.
+7. Commit the release cut, then repeat any gate invalidated by that commit.
+8. After the explicit release GO, run `make tag`; its tag push triggers the
+   publish workflow.
 
-If step 5 surfaces a real regression, the release waits.
+If a gate surfaces a real regression, the release waits.
 
 **6. Audio fixture**
 

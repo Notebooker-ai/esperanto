@@ -46,8 +46,10 @@ Whether you're building a quick prototype or a production application serving mi
   - Azure OpenAI (Chat, Embedding, Whisper, TTS)
   - Mistral (Mistral Large, Small, Embedding, etc.)
   - DeepSeek (deepseek-chat)
+  - SiliconFlow (DeepSeek, Qwen, and other OpenAI-compatible models)
   - DashScope / Qwen (qwen-turbo, qwen-plus, qwen-max)
-  - MiniMax (MiniMax-M2.5)
+  - MiniMax (MiniMax-M3 with 1M context, Text-to-Speech)
+  - Z.ai (GLM models: glm-5.2, glm-4.5-flash)
   - PayPerQ / PPQ (pay-as-you-go gateway to hundreds of models)
   - Voyage (Embeddings, Reranking)
   - Jina (Advanced embedding models with task optimization, Reranking)
@@ -76,7 +78,7 @@ Whether you're building a quick prototype or a production application serving mi
 - [Text-to-Speech](https://github.com/lfnovo/esperanto/blob/main/docs/capabilities/text-to-speech.md) - Voice generation
 
 ### By Provider
-- [Provider Setup Guides](https://github.com/lfnovo/esperanto/blob/main/docs/providers/) - Complete setup for all 17 providers
+- [Provider Setup Guides](https://github.com/lfnovo/esperanto/blob/main/docs/providers/) - Complete setup for all supported providers
 
 ### Advanced Topics
 - [Task-Aware Embeddings](https://github.com/lfnovo/esperanto/blob/main/docs/advanced/task-aware-embeddings.md)
@@ -119,17 +121,17 @@ This installs:
 If you plan to use any of the `.to_langchain()` methods, you need to install the correct LangChain SDKs manually:
 
 ```bash
-# Core LangChain dependencies (required)
-pip install "langchain>=0.3.8,<0.4.0" "langchain-core>=0.3.29,<0.4.0"
+# Core LangChain dependency (required); add "langchain>=1.2.4,<2.0.0" for agents
+pip install "langchain-core>=1.2.7,<2.0.0"
 
 # Provider-specific LangChain packages (install only what you need)
-pip install "langchain-openai>=0.2.9"
-pip install "langchain-anthropic>=0.3.0"
-pip install "langchain-google-genai>=2.1.2"
-pip install "langchain-ollama>=0.2.0"
-pip install "langchain-groq>=0.2.1"
-pip install "langchain_mistralai>=0.2.1"
-pip install "langchain_deepseek>=0.1.3"
+pip install "langchain-openai>=1.1.7,<2.0.0"
+pip install "langchain-anthropic>=1.3.1,<2.0.0"
+pip install "langchain-google-genai>=4.2.0,<5.0.0"
+pip install "langchain-ollama>=1.0.1,<2.0.0"
+pip install "langchain-groq>=1.1.1,<2.0.0"
+pip install "langchain-mistralai>=1.1.1,<2.0.0"
+# DeepSeek, xAI, OpenRouter and other OpenAI-compatible providers use langchain-openai
 ```
 
 ## Provider Support Matrix
@@ -150,12 +152,14 @@ pip install "langchain_deepseek>=0.1.3"
 | Azure OpenAI | ✅          | ✅               | ❌                | ✅             | ✅             | ✅        |
 | Mistral      | ✅          | ✅               | ❌                | ❌             | ❌             | ✅        |
 | DeepSeek     | ✅          | ❌               | ❌                | ❌             | ❌             | ✅        |
+| SiliconFlow  | ✅          | ❌               | ❌                | ❌             | ❌             | ✅        |
 | Voyage       | ❌          | ✅               | ✅                | ❌             | ❌             | ❌        |
 | Jina         | ❌          | ✅               | ✅                | ❌             | ❌             | ❌        |
 | Cohere       | ✅          | ✅               | ✅                | ❌             | ❌             | ✅        |
 | xAI          | ✅          | ❌               | ❌                | ❌             | ❌             | ❌        |
 | DashScope    | ✅          | ❌               | ❌                | ❌             | ❌             | ✅        |
-| MiniMax      | ✅          | ❌               | ❌                | ❌             | ❌             | ✅        |
+| MiniMax      | ✅          | ❌               | ❌                | ❌             | ✅             | ✅        |
+| Z.ai         | ✅          | ❌               | ❌                | ❌             | ❌             | ✅        |
 | OpenRouter   | ✅          | ❌               | ❌                | ❌             | ❌             | ✅        |
 | PayPerQ (PPQ)| ✅          | ✅               | ❌                | ✅             | ✅             | ✅        |
 
@@ -177,11 +181,11 @@ providers = AIFactory.get_available_providers()
 print(providers)
 # Output:
 # {
-#     'language': ['anthropic', 'azure', 'cohere', 'dashscope', 'deepseek', 'google', 'groq', 'minimax', 'mistral', 'ollama', 'openai', 'openai-compatible', 'openrouter', 'perplexity', 'ppq', 'vertex', 'xai'],
+#     'language': ['anthropic', 'azure', 'cohere', 'dashscope', 'deepseek', 'google', 'groq', 'minimax', 'mistral', 'ollama', 'openai', 'openai-compatible', 'openrouter', 'perplexity', 'ppq', 'siliconflow', 'vertex', 'xai', 'zai'],
 #     'embedding': ['openai', 'openai-compatible', 'google', 'ollama', 'vertex', 'transformers', 'voyage', 'mistral', 'azure', 'jina', 'openrouter', 'cohere'],
 #     'reranker': ['jina', 'voyage', 'transformers', 'cohere'],
 #     'speech_to_text': ['openai', 'groq', 'elevenlabs', 'openai-compatible', 'azure', 'google', 'mistral', 'deepgram'],
-#     'text_to_speech': ['openai', 'elevenlabs', 'google', 'vertex', 'openai-compatible', 'azure', 'xai', 'mistral', 'deepgram']
+#     'text_to_speech': ['openai', 'elevenlabs', 'google', 'vertex', 'openai-compatible', 'azure', 'xai', 'mistral', 'deepgram', 'minimax']
 # }
 
 # Create model instances
@@ -234,9 +238,10 @@ for model in claude_models:
     print(f"{model.id} - Context: {model.context_window} tokens")
 
 # Example output:
-# claude-sonnet-5 - Context: 200000 tokens
-# claude-haiku-4-5-20251001 - Context: 200000 tokens
-# claude-opus-5 - Context: 200000 tokens
+# claude-opus-5-5 - Context: 1000000 tokens
+# claude-sonnet-5-5 - Context: 1000000 tokens
+# claude-fable-5-1 - Context: 1000000 tokens
+# ...
 
 # OpenAI-compatible endpoints (requires base_url)
 local_models = AIFactory.get_provider_models(
@@ -324,12 +329,17 @@ print(response.usage.total_tokens)          # Token usage information
 print(response.content)          # Shortcut for response.choices[0].message.content
 
 # For streaming responses
-for chunk in model.chat_complete(messages):
+for chunk in model.chat_complete(messages, stream=True):
     print(chunk.choices[0].delta.content, end="", flush=True)
 
 # Async streaming
-async for chunk in model.achat_complete(messages):
-    print(chunk.choices[0].delta.content, end="", flush=True)
+import asyncio
+
+async def stream_async():
+    async for chunk in await model.achat_complete(messages, stream=True):
+        print(chunk.choices[0].delta.content, end="", flush=True)
+
+asyncio.run(stream_async())
 ```
 
 #### Handling Reasoning Traces
@@ -535,7 +545,7 @@ from esperanto.providers.llm.perplexity import PerplexityLanguageModel
 
 model = PerplexityLanguageModel(
     api_key="your-api-key",  # Or set PERPLEXITY_API_KEY env var
-    model_name="llama-3-sonar-large-32k-online", # Recommended default
+    model_name="sonar",      # Default; also sonar-pro, sonar-reasoning-pro, sonar-deep-research
     temperature=0.7,         # Optional
     max_tokens=850,         # Optional
     streaming=False,        # Optional
@@ -703,8 +713,13 @@ for chunk in model.chat_complete(messages):
     print(chunk.choices[0].delta.content, end="", flush=True)
 
 # Async streaming
-async for chunk in model.achat_complete(messages):
-    print(chunk.choices[0].delta.content, end="", flush=True)
+import asyncio
+
+async def stream_async():
+    async for chunk in await model.achat_complete(messages):
+        print(chunk.choices[0].delta.content, end="", flush=True)
+
+asyncio.run(stream_async())
 ```
 
 ## Structured Output 📊
@@ -769,8 +784,8 @@ model = OpenAILanguageModel(api_key="your-api-key")
 langchain_model = model.to_langchain()
 
 # Use with LangChain
-from langchain.chains import ConversationChain
-chain = ConversationChain(llm=langchain_model)
+response = langchain_model.invoke("Hello!")
+print(response.content)
 ```
 
 ## Documentation 📚
@@ -781,7 +796,7 @@ Complete documentation is available in the [docs](https://github.com/lfnovo/espe
 - **[Documentation Index](https://github.com/lfnovo/esperanto/blob/main/docs/README.md)** - Navigation hub for all documentation
 - **[Provider Comparison](https://github.com/lfnovo/esperanto/blob/main/docs/providers/README.md)** - Compare and choose providers
 - **[Capability Guides](https://github.com/lfnovo/esperanto/tree/main/docs/capabilities)** - Learn about LLM, Embeddings, Reranking, STT, TTS
-- **[Provider Setup Guides](https://github.com/lfnovo/esperanto/tree/main/docs/providers)** - Setup instructions for all 17 providers
+- **[Provider Setup Guides](https://github.com/lfnovo/esperanto/tree/main/docs/providers)** - Setup instructions for all supported providers
 - **[Advanced Topics](https://github.com/lfnovo/esperanto/tree/main/docs/advanced)** - Task-aware embeddings, LangChain, timeouts, and more
 
 ## Contributing 🤝

@@ -8,7 +8,7 @@ Anthropic provides access to the Claude family of large language models, known f
 
 | Capability | Supported | Notes |
 |------------|-----------|-------|
-| Language Models (LLM) | ✅ | Claude 3.5, Claude 3 Opus/Sonnet/Haiku |
+| Language Models (LLM) | ✅ | Claude Opus 5.5, Sonnet 5.5, Fable 5.1, Sonnet 5, Haiku 4.5 |
 | Embeddings | ❌ | Not available |
 | Reranking | ❌ | Not available |
 | Speech-to-Text | ❌ | Not available |
@@ -79,14 +79,26 @@ print(response.choices[0].message.content)
 
 | Model | Context Window | Best For |
 |-------|----------------|----------|
-| **claude-sonnet-5** | 200K tokens | Default. Balanced performance and speed |
-| **claude-opus-5** | 200K tokens | Complex tasks, highest capability |
-| **claude-sonnet-4-5-20250929** | 200K tokens | Pinned Sonnet, stable across releases |
+| **claude-opus-5-5** | 1M tokens | Current Opus. Complex tasks |
+| **claude-sonnet-5-5** | 1M tokens | Current Sonnet. Fast, capable everyday work |
+| **claude-fable-5-1** | 1M tokens | Most capable model, for the hardest reasoning tasks |
+| **claude-sonnet-5** | 1M tokens | Default. Balanced performance and speed |
+| **claude-opus-5** | 1M tokens | Previous Opus |
+| **claude-opus-4-5-20251101** | 200K tokens | Pinned Opus 4.5 |
+| **claude-sonnet-4-5-20250929** | 1M tokens | Pinned Sonnet 4.5 |
 | **claude-haiku-4-5-20251001** | 200K tokens | Fast responses, cost-effective |
 
-The undated aliases (`claude-sonnet-5`, `claude-opus-5`) track Anthropic's
-current release of that tier; pin a dated id when you need the model to stay
-fixed.
+Each id names one model generation: `claude-sonnet-5` does not move to Sonnet
+5.5. Change the id to use a newer generation.
+
+Claude Opus 5.5 and Fable 5.1 always think, and Sonnet 5.5 thinks by default.
+Thinking counts against `max_tokens`, so leave enough room for the answer (see
+[Empty Structured Responses](#empty-structured-responses-and-thinking-budgets)).
+These models (and Claude Mythos 5.1) also reject forced tool choice
+(`tool_choice="required"` or a specific tool). Esperanto sends `tool_choice="auto"` instead and emits a
+`UserWarning`, so the same code keeps working, but a tool call is no longer
+guaranteed. Name the tool in the prompt to steer the model, or use
+`structured={"type": "json_schema", ...}` when you only need JSON back.
 
 **Configuration:**
 
@@ -159,8 +171,13 @@ for chunk in model.chat_complete(messages, stream=True):
     print(chunk.choices[0].delta.content, end="", flush=True)
 
 # Async streaming
-async for chunk in model.achat_complete(messages, stream=True):
-    print(chunk.choices[0].delta.content, end="", flush=True)
+import asyncio
+
+async def stream_async():
+    async for chunk in await model.achat_complete(messages, stream=True):
+        print(chunk.choices[0].delta.content, end="", flush=True)
+
+asyncio.run(stream_async())
 ```
 
 **Example - JSON Mode:**
@@ -180,15 +197,15 @@ messages = [{
 
 response = model.chat_complete(messages)
 print(response.choices[0].message.content)
-# Response will be valid JSON
+# JSON mode is prompt-guided on Anthropic; see "JSON Mode" below
 ```
 
 **Example - Long Context:**
 
 ```python
-# Claude excels at long-context tasks with 200K token window
+# Current Claude models have a 1M-token context window (Haiku 4.5: 200K)
 long_document = """
-[Your long document content here - can be up to 200K tokens]
+[Your long document content here - up to the model's context window]
 """
 
 messages = [
@@ -239,16 +256,17 @@ focused_response = focused_model.chat_complete(messages)
 ## Advanced Features
 
 ### JSON Mode
-Claude supports structured JSON output:
+`structured={"type": "json"}` is **prompt-guided only** on Anthropic. The Anthropic API has no generic JSON mode: current models reject assistant prefill, and `output_config` only accepts a concrete schema. Esperanto therefore sends no constraint, and the model usually returns JSON because the prompt asks for it. Esperanto emits a `UserWarning` when you use this mode with Anthropic, in `chat_complete()`, `achat_complete()` and `to_langchain()`.
+
+For guaranteed JSON, use [schema-driven structured output](#schema-driven-structured-output-v1) (`{"type": "json_schema", "schema": ...}`), which Anthropic enforces on Claude 4.5 models and newer (Opus 4.5+, Sonnet 4.5+, Haiku 4.5).
 
 ```python
 model = AIFactory.create_language(
     "anthropic",
     "claude-sonnet-5",
-    config={"structured": {"type": "json"}}
+    config={"structured": {"type": "json"}}  # warns: prompt-guided only
 )
 
-# Claude will return valid JSON
 messages = [{
     "role": "user",
     "content": "Create a JSON object with user information"
@@ -256,6 +274,27 @@ messages = [{
 
 response = model.chat_complete(messages)
 ```
+
+### Empty Structured Responses and Thinking Budgets
+Claude Opus 5.5 always thinks, and its `max_tokens` covers thinking **plus** the answer. When thinking uses up the whole budget, or the model refuses, the response has no text. In any structured mode, when a response has no text and no tool calls, Esperanto raises `EmptyCompletionError` instead of returning empty content:
+
+```python
+from esperanto import AIFactory, EmptyCompletionError
+
+model = AIFactory.create_language(
+    "anthropic",
+    "claude-opus-5-5",
+    config={"structured": {"type": "json"}, "max_tokens": 4096}
+)
+messages = [{"role": "user", "content": "List three fruits and their colors as JSON"}]
+
+try:
+    response = model.chat_complete(messages)
+except EmptyCompletionError as e:
+    print(e.model, e.finish_reason)  # e.g. "claude-opus-5-5", "length"
+```
+
+`finish_reason` is `"length"` when the budget ran out (raise `max_tokens`) and `"content_filter"` when the model refused. Anthropic stop reasons are normalized to the same values the other providers use: `end_turn` becomes `"stop"`, `tool_use` becomes `"tool_calls"`, `max_tokens` becomes `"length"`, and `refusal` becomes `"content_filter"`.
 
 ### Schema-Driven Structured Output (v1)
 Anthropic also supports schema-constrained outputs via `structured={"type": "json_schema", ...}`:
@@ -291,6 +330,7 @@ print(response.structured)   # Parsed/validated TravelPlan instance
 
 Notes:
 - Schema mode is currently non-streaming in Esperanto v1 (`stream=True` raises `ValueError`).
+- A response with empty content and no tool calls raises `EmptyCompletionError` (see [Empty Structured Responses](#empty-structured-responses-and-thinking-budgets)).
 - Anthropic strict tool-use schema enforcement (`tools[].strict`) is a separate feature and is not part of this v1 schema-output path.
 
 ### Temperature and Top-P Priority
@@ -333,55 +373,62 @@ model = AIFactory.create_language("anthropic", "claude-sonnet-5")
 langchain_model = model.to_langchain()
 
 # Use with LangChain
-from langchain.chains import ConversationChain
-chain = ConversationChain(llm=langchain_model)
+response = langchain_model.invoke("Hello!")
+print(response.content)
 ```
 
 ## Model Selection Guide
 
-### Claude 3.5 Sonnet (Recommended)
+### Claude Sonnet 5 (Default) and Sonnet 5.5
 **Best for:** Most use cases, balanced performance
-- Excellent reasoning and analysis
-- Fast response times
-- Cost-effective for production
-- 200K token context window
+- Strong reasoning and analysis at moderate cost
+- 1M token context window
+- Sonnet 5.5 is the current Sonnet; it thinks by default and does not support forced tool choice (Esperanto falls back to `auto` with a warning)
 
 ```python
-model = AIFactory.create_language("anthropic", "claude-sonnet-5")
+model = AIFactory.create_language("anthropic", "claude-sonnet-5")    # default
+model = AIFactory.create_language("anthropic", "claude-sonnet-5-5")  # current Sonnet
 ```
 
-### Claude 3.5 Haiku
+### Claude Opus 5.5
+**Best for:** Complex reasoning and agentic work
+- Current Opus; thinking is always on and counts against `max_tokens`
+- 1M token context window
+- Does not support forced tool choice (Esperanto falls back to `auto` with a warning)
+
+```python
+model = AIFactory.create_language("anthropic", "claude-opus-5-5")
+```
+
+### Claude Fable 5.1
+**Best for:** The hardest reasoning tasks, when quality matters more than cost
+- Anthropic's most capable widely available model
+- Thinking is always on; requests can run for minutes on hard tasks
+- 1M token context window
+
+```python
+model = AIFactory.create_language("anthropic", "claude-fable-5-1")
+```
+
+### Claude Haiku 4.5
 **Best for:** High-volume, fast responses
-- Fastest Claude model
-- Most cost-effective
-- Good for simple tasks
-- Still maintains strong capabilities
+- Fastest and most cost-effective Claude model
+- 200K token context window
 
 ```python
 model = AIFactory.create_language("anthropic", "claude-haiku-4-5-20251001")
 ```
 
-### Claude 3 Opus
-**Best for:** Complex reasoning, highest accuracy
-- Most capable Claude model
-- Best for complex analysis
-- Highest cost
-- Use when quality is paramount
-
-```python
-model = AIFactory.create_language("anthropic", "claude-opus-5")
-```
-
 ## Performance Characteristics
 
 ### Context Window
-All Claude 3 models support 200K token context:
-- Approximately 150,000 words
-- Entire codebases or long documents
-- Extensive conversation history
+Current Claude models support a 1M-token context window; Claude Haiku 4.5 and
+Claude Opus 4.5 support 200K. See the [models table](#language-models-llm) or
+`AIFactory.get_provider_models("anthropic")` for each model's window.
 
 ### Response Quality
-- **Opus**: Highest quality, best reasoning
+- **Fable**: Highest quality, for the hardest reasoning tasks
+- **Opus**: Very high quality, strong reasoning at a lower cost than Fable
 - **Sonnet**: Excellent balance of quality and speed
 - **Haiku**: Fast, still maintains good quality
 
@@ -410,7 +457,7 @@ Error: Rate limit exceeded
 ```
 Error: Prompt is too long
 ```
-**Solution:** Reduce the total tokens in your messages (Claude 3 supports up to 200K tokens).
+**Solution:** Reduce the total tokens in your messages to fit the model's context window (1M tokens on current models, 200K on Haiku 4.5).
 
 **Missing max_tokens:**
 ```
@@ -441,7 +488,7 @@ config={"timeout": 120.0, "max_tokens": 1024}
 
 3. **System Messages:** Claude handles system messages naturally - use them to set context and behavior.
 
-4. **Long Context:** Take advantage of the 200K context window for complex tasks.
+4. **Long Context:** Take advantage of the 1M-token context window (200K on Haiku 4.5) for complex tasks.
 
 5. **Temperature Settings:** Use lower temperatures (0.2-0.5) for factual tasks, higher (0.7-1.0) for creative tasks.
 

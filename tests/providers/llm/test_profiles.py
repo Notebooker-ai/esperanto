@@ -57,6 +57,7 @@ class TestOpenAICompatibleProfile:
 class TestProfileRegistry:
     def test_builtin_profiles_exist(self):
         assert "deepseek" in BUILTIN_PROFILES
+        assert "siliconflow" in BUILTIN_PROFILES
         assert "xai" in BUILTIN_PROFILES
         assert "novita" in BUILTIN_PROFILES
 
@@ -67,6 +68,16 @@ class TestProfileRegistry:
         assert profile.base_url == "https://api.deepseek.com/v1"
         assert profile.api_key_env == "DEEPSEEK_API_KEY"
         assert profile.default_model_for("language") == "deepseek-chat"
+
+    def test_get_siliconflow_profile(self):
+        profile = get_profile("siliconflow")
+        assert profile is not None
+        assert profile.name == "siliconflow"
+        assert profile.base_url == "https://api.siliconflow.com/v1"
+        assert profile.api_key_env == "SILICONFLOW_API_KEY"
+        assert profile.base_url_env == "SILICONFLOW_BASE_URL"
+        assert profile.default_model_for("language") == "deepseek-ai/DeepSeek-V3.1-Terminus"
+        assert profile.display_name == "SiliconFlow"
 
     def test_get_xai_profile(self):
         profile = get_profile("xai")
@@ -111,6 +122,15 @@ class TestProfileRegistry:
         assert profile.default_model_for("speech_to_text") == "nova-3"
         assert profile.default_model_for("text_to_speech") == "deepgram_aura_2"
 
+    def test_get_zai_profile(self):
+        profile = get_profile("zai")
+        assert profile is not None
+        assert profile.name == "zai"
+        assert profile.base_url == "https://api.z.ai/api/paas/v4"
+        assert profile.api_key_env == "ZAI_API_KEY"
+        assert profile.default_model_for("language") == "glm-5.2"
+        assert profile.model_prefix_filter == "glm"
+
     def test_get_unknown_profile_returns_none(self):
         assert get_profile("unknown-provider") is None
 
@@ -150,6 +170,7 @@ class TestProfileRegistry:
     def test_get_all_profile_names(self):
         names = get_all_profile_names()
         assert "deepseek" in names
+        assert "siliconflow" in names
         assert "xai" in names
         assert "novita" in names
 
@@ -174,6 +195,14 @@ class TestFactoryIntegration:
         )
         assert model.provider == "deepseek"
         assert model.base_url == "https://api.deepseek.com/v1"
+        assert model.api_key == "test-key"
+
+    def test_create_language_with_siliconflow_profile(self):
+        model = AIFactory.create_language(
+            "siliconflow", "deepseek-ai/DeepSeek-V3.1-Terminus", config={"api_key": "test-key"}
+        )
+        assert model.provider == "siliconflow"
+        assert model.base_url == "https://api.siliconflow.com/v1"
         assert model.api_key == "test-key"
 
     def test_create_language_with_xai_profile(self):
@@ -213,6 +242,7 @@ class TestFactoryIntegration:
     def test_get_available_providers_includes_profiles(self):
         providers = AIFactory.get_available_providers()
         assert "deepseek" in providers["language"]
+        assert "siliconflow" in providers["language"]
         assert "xai" in providers["language"]
         assert "novita" in providers["language"]
         # Class-based providers also present
@@ -243,6 +273,12 @@ class TestProfileBehavior:
         )
         assert model._get_default_model() == "deepseek-chat"
 
+    def test_siliconflow_default_model(self):
+        model = AIFactory.create_language(
+            "siliconflow", "deepseek-ai/DeepSeek-V3.1-Terminus", config={"api_key": "test-key"}
+        )
+        assert model._get_default_model() == "deepseek-ai/DeepSeek-V3.1-Terminus"
+
     def test_xai_default_model(self):
         model = AIFactory.create_language(
             "xai", "grok-2-latest", config={"api_key": "test-key"}
@@ -252,6 +288,11 @@ class TestProfileBehavior:
     def test_deepseek_env_var_api_key(self):
         with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "env-key"}, clear=False):
             model = AIFactory.create_language("deepseek", "deepseek-chat")
+            assert model.api_key == "env-key"
+
+    def test_siliconflow_env_var_api_key(self):
+        with patch.dict(os.environ, {"SILICONFLOW_API_KEY": "env-key"}, clear=False):
+            model = AIFactory.create_language("siliconflow", "deepseek-ai/DeepSeek-V3.1-Terminus")
             assert model.api_key == "env-key"
 
     def test_xai_env_var_api_key(self):
@@ -268,6 +309,18 @@ class TestProfileBehavior:
             model = AIFactory.create_language("deepseek", "deepseek-chat")
             assert model.base_url == "https://custom.deepseek.com"
 
+    def test_siliconflow_env_var_base_url(self):
+        with patch.dict(
+            os.environ,
+            {
+                "SILICONFLOW_API_KEY": "key",
+                "SILICONFLOW_BASE_URL": "https://api.siliconflow.cn/v1",
+            },
+            clear=False,
+        ):
+            model = AIFactory.create_language("siliconflow", "deepseek-ai/DeepSeek-V3.1-Terminus")
+            assert model.base_url == "https://api.siliconflow.cn/v1"
+
     def test_config_overrides_profile_defaults(self):
         model = AIFactory.create_language(
             "deepseek",
@@ -279,10 +332,26 @@ class TestProfileBehavior:
         )
         assert model.base_url == "https://override.deepseek.com/v1"
 
+    def test_siliconflow_config_base_url_uses_cn_endpoint(self):
+        model = AIFactory.create_language(
+            "siliconflow",
+            "deepseek-ai/DeepSeek-V3.1-Terminus",
+            config={
+                "api_key": "test-key",
+                "base_url": "https://api.siliconflow.cn/v1",
+            },
+        )
+        assert model.base_url == "https://api.siliconflow.cn/v1"
+
     def test_missing_api_key_raises_with_provider_name(self):
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError, match="DeepSeek API key not found"):
                 AIFactory.create_language("deepseek", "deepseek-chat")
+
+    def test_missing_siliconflow_api_key_raises_with_provider_name(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(ValueError, match="SiliconFlow API key not found"):
+                AIFactory.create_language("siliconflow", "deepseek-ai/DeepSeek-V3.1-Terminus")
 
     def test_missing_xai_api_key_raises_with_provider_name(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -327,21 +396,48 @@ class TestProfileBehavior:
 
     def test_minimax_creation(self):
         model = AIFactory.create_language(
-            "minimax", "MiniMax-M2.5", config={"api_key": "test-key"}
+            "minimax", "MiniMax-M3", config={"api_key": "test-key"}
         )
         assert model.provider == "minimax"
         assert model.base_url == "https://api.minimax.io/v1"
-        assert model._get_default_model() == "MiniMax-M2.5"
+        assert model._get_default_model() == "MiniMax-M3"
 
     def test_minimax_env_var(self):
         with patch.dict(os.environ, {"MINIMAX_API_KEY": "env-key"}, clear=False):
-            model = AIFactory.create_language("minimax", "MiniMax-M2.5")
+            model = AIFactory.create_language("minimax", "MiniMax-M3")
             assert model.api_key == "env-key"
 
     def test_minimax_missing_api_key_raises(self):
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError, match="MiniMax API key not found"):
-                AIFactory.create_language("minimax", "MiniMax-M2.5")
+                AIFactory.create_language("minimax", "MiniMax-M3")
+
+    def test_zai_creation(self):
+        model = AIFactory.create_language(
+            "zai", "glm-5.2", config={"api_key": "test-key"}
+        )
+        assert model.provider == "zai"
+        assert model.base_url == "https://api.z.ai/api/paas/v4"
+        assert model._get_default_model() == "glm-5.2"
+
+    def test_zai_env_var(self):
+        with patch.dict(os.environ, {"ZAI_API_KEY": "env-key"}, clear=False):
+            model = AIFactory.create_language("zai", "glm-5.2")
+            assert model.api_key == "env-key"
+
+    def test_zai_env_var_base_url(self):
+        with patch.dict(
+            os.environ,
+            {"ZAI_API_KEY": "key", "ZAI_BASE_URL": "https://custom.z.ai/api/paas/v4"},
+            clear=False,
+        ):
+            model = AIFactory.create_language("zai", "glm-5.2")
+            assert model.base_url == "https://custom.z.ai/api/paas/v4"
+
+    def test_zai_missing_api_key_raises(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(ValueError, match=r"Z\.ai API key not found"):
+                AIFactory.create_language("zai", "glm-5.2")
 
     def test_ppq_creation(self):
         model = AIFactory.create_language(
@@ -422,6 +518,29 @@ class TestProfileBehavior:
         assert len(models) == 2
         assert all(m.id.startswith("grok") for m in models)
         assert all(m.owned_by == "X.AI" for m in models)
+
+    def test_zai_model_prefix_filter(self):
+        """Z.ai profile filters models to glm-* prefix."""
+        model = AIFactory.create_language(
+            "zai", "glm-5.2", config={"api_key": "test-key"}
+        )
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"id": "glm-5.2", "owned_by": "zai"},
+                {"id": "glm-4.5-flash", "owned_by": "zai"},
+                {"id": "some-other-model", "owned_by": "zai"},
+            ]
+        }
+        mock_client = Mock()
+        mock_client.get.return_value = mock_response
+        model.client = mock_client
+
+        models = model._get_models()
+        assert len(models) == 2
+        assert all(m.id.startswith("glm") for m in models)
+        assert all(m.owned_by == "Z.ai" for m in models)
 
 
 # =============================================================================
